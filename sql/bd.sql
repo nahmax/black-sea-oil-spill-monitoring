@@ -115,7 +115,7 @@ CREATE TABLE public.agent_settings (
 
 -- ==========================================
 -- Прив’язка подій до постів у Telegram‑каналі
--- використовується в WF_EVENT_PUBLISH_AGENTt, WF_EVENT_S1_AGENT, WF_EVENT_S1_AGENT
+-- використовується в WF_EVENT_PUBLISH_AGENT, WF_EVENT_S1_AGENT, WF_EVENT_S1_AGENT
 -- ==========================================
 CREATE TABLE public.tg_posts (
   event_id   bigint NOT NULL REFERENCES public.events(id) ON DELETE CASCADE, -- ID події

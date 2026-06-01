@@ -77,7 +77,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT u.id, u.role, u.status\nFROM public.users u\nWHERE u.tg_user_id = '{{ $node[\"SET.CONTEXT\"].json.tg_user_id }}';",
+        "query": "=SELECT u.id, u.role, u.status\nFROM public.users u\nWHERE u.tg_user_id = '{{ $node[\"SET.CONTEXT\"].json.tg_user_id }}';",
         "options": {}
       },
       "id": "87871b8e-cf08-4054-b263-d391397b8124",
@@ -173,6 +173,8 @@
     },
     {
       "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
         "chatId": "={{ $node[\"SET.CONTEXT\"].json.chat_id }}",
         "text": "={{ $json.output }}\n",
         "additionalFields": {
@@ -204,6 +206,7 @@
           "cachedResultUrl": "/workflow/5ipdMJUXPklvbhzH",
           "cachedResultName": "WF_NEWS_ON_DEMAND"
         },
+        "description": "Search fresh Black Sea spill news and insert new events.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
@@ -253,6 +256,7 @@
           "cachedResultUrl": "/workflow/udF7RdAqHOGRjSrv",
           "cachedResultName": "AGENT_RAG_QUERY"
         },
+        "description": "Run semantic search over the stored spill database.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
@@ -295,6 +299,7 @@
           "cachedResultUrl": "/workflow/9IMIjDVZxzQl78ph",
           "cachedResultName": "WF_EVENT_UPSERT_MANUAL"
         },
+        "description": "Create or update a manual spill event in PostgreSQL.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
@@ -390,6 +395,7 @@
           "cachedResultUrl": "/workflow/ZD56ylpapyyXSVY9",
           "cachedResultName": "WF_EVENT_COORDS_AGENT"
         },
+        "description": "Infer and store coordinates for a specific event.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
@@ -432,6 +438,7 @@
           "cachedResultUrl": "/workflow/5SbvSp9peySgrnVN",
           "cachedResultName": "WF_EVENT_S1_AGENT"
         },
+        "description": "Fetch Sentinel-1 imagery for a given event.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
@@ -473,6 +480,7 @@
           "cachedResultUrl": "/workflow/8L7YUHX1lOfmwcY3",
           "cachedResultName": "WF_EVENT_DET_AGENT"
         },
+        "description": "Analyze the latest satellite image for spill detection.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
@@ -510,8 +518,9 @@
           "value": "854MMR0ldalLCsY8",
           "mode": "list",
           "cachedResultUrl": "/workflow/854MMR0ldalLCsY8",
-          "cachedResultName": "WF_EVENT_PUBLISH_AGENTt"
+          "cachedResultName": "WF_EVENT_PUBLISH_AGENT"
         },
+        "description": "Publish or refresh the Telegram post for an event.",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {

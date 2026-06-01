@@ -50,7 +50,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  e.id,\n  e.src_url,\n  e.src_title,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.lat,\n  e.lon,\n  e.has_photo\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};",
+        "query": "=SELECT\n  e.id,\n  e.src_url,\n  e.src_title,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.lat,\n  e.lon,\n  e.has_photo\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -183,7 +183,7 @@
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={\n  \"hours_before\": 0,\n  \"hours_after\": 168,\n  \"bbox_km\": 6\n}",
+        "jsonOutput": "{\n  \"hours_before\": 0,\n  \"hours_after\": 168,\n  \"bbox_km\": 6\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
@@ -231,11 +231,11 @@
             },
             {
               "name": "client_id",
-              "value": "своє вставити"
+              "value": "={{ $env.SENTINEL_HUB_CLIENT_ID || '' }}"
             },
             {
               "name": "client_secret",
-              "value": "своє вставити"
+              "value": "={{ $env.SENTINEL_HUB_CLIENT_SECRET || '' }}"
             }
           ]
         },
@@ -314,7 +314,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  channel_id,\n  message_id\nFROM public.tg_posts\nWHERE event_id = {{ $items('PG.SELECT_EVENT_S1')[0].json.id }}\nLIMIT 1;",
+        "query": "=SELECT\n  channel_id,\n  message_id\nFROM public.tg_posts\nWHERE event_id = {{ $items('PG.SELECT_EVENT_S1')[0].json.id }}\nLIMIT 1;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -335,7 +335,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT trim(both from value->>'id') AS chat_id\nFROM public.agent_settings\nWHERE key = 'channel'\nLIMIT 1;",
+        "query": "=SELECT trim(both from value->>'id') AS chat_id\nFROM public.agent_settings\nWHERE key = 'channel'\nLIMIT 1;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -407,7 +407,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO public.tg_media (event_id, message_id, file_id, kind)\nVALUES ({{$json.event_id }}, {{ $json.message_id }}, '{{$json.file_id  }}', 'document')\nON CONFLICT DO NOTHING;",
+        "query": "=INSERT INTO public.tg_media (event_id, message_id, file_id, kind)\nVALUES ({{$json.event_id }}, {{ $json.message_id }}, '{{$json.file_id  }}', 'document')\nON CONFLICT DO NOTHING;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -428,7 +428,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE public.events\n   SET has_photo = true\n WHERE id = {{ $('PG.SELECT_EVENT_S1').item.json.id }};",
+        "query": "=UPDATE public.events\n   SET has_photo = true\n WHERE id = {{ $('PG.SELECT_EVENT_S1').item.json.id }};",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",

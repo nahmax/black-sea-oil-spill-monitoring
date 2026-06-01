@@ -50,7 +50,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  e.id,\n  e.src_title,\n  e.src_url,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.verdict,\n  e.confidence,\n  e.has_photo\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};",
+        "query": "=SELECT\n  e.id,\n  e.src_title,\n  e.src_url,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.verdict,\n  e.confidence,\n  e.has_photo\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -139,7 +139,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  tm.file_id,\n  tm.kind,\n  tm.message_id\nFROM public.tg_media tm\nWHERE tm.event_id = {{ $json.id }}\nORDER BY tm.message_id DESC\nLIMIT 1;",
+        "query": "=SELECT\n  tm.file_id,\n  tm.kind,\n  tm.message_id\nFROM public.tg_media tm\nWHERE tm.event_id = {{ $json.id }}\nORDER BY tm.message_id DESC\nLIMIT 1;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -270,7 +270,7 @@
           "mode": "list",
           "cachedResultName": "CHATGPT-4O-LATEST"
         },
-        "text": "You are a marine SAR / satellite image analyst.\n\nYou get Sentinel-1 (or similar) grayscale image over the sea.\nYour task is to detect if there is an oil spill on the sea surface.\n\nReturn STRICT JSON only, no explanations, with this shape:\n\n{\n  \"verdict\": \"spill\" | \"no_spill\" | \"uncertain\",\n  \"confidence\": 0.0-1.0,\n  \"notes\": \"short explanation in Ukrainian or Russian\"\n}",
+        "text": "You are a marine SAR / satellite image analyst.\n\nYou get Sentinel-1 (or similar) grayscale image over the sea.\nYour task is to detect if there is an oil spill on the sea surface.\n\nReturn STRICT JSON only, no explanations, with this shape:\n\n{\n  \"verdict\": \"spill\" | \"no_spill\" | \"uncertain\",\n  \"confidence\": 0.0-1.0,\n  \"notes\": \"short explanation in Ukrainian\"\n}",
         "inputType": "base64",
         "options": {
           "maxTokens": 200
@@ -307,7 +307,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE public.events\nSET\n  verdict    = '{{ $json.verdict }}',      -- 'spill' | 'skip' | 'unknown'\n  confidence = {{ $json.confidence != null ? $json.confidence : 'NULL' }},\n  is_oil_black_sea = {{ $json.is_oil_black_sea === null\n                         ? 'NULL'\n                         : ($json.is_oil_black_sea ? 'TRUE' : 'FALSE') }},\n  llm_extract = COALESCE(llm_extract, '{}'::jsonb)\n                || '{{ $json.raw_json ? JSON.stringify($json.raw_json) : \"{}\" }}'::jsonb,\n  llm_version = 'gpt-4.0-mini-vision'\nWHERE id = {{ $json.ev_id }};\n",
+        "query": "=UPDATE public.events\nSET\n  verdict    = '{{ $json.verdict }}',      -- 'spill' | 'skip' | 'unknown'\n  confidence = {{ $json.confidence != null ? $json.confidence : 'NULL' }},\n  is_oil_black_sea = {{ $json.is_oil_black_sea === null\n                         ? 'NULL'\n                         : ($json.is_oil_black_sea ? 'TRUE' : 'FALSE') }},\n  llm_extract = COALESCE(llm_extract, '{}'::jsonb)\n                || '{{ $json.raw_json ? JSON.stringify($json.raw_json) : \"{}\" }}'::jsonb,\n  llm_version = 'gpt-4.0-mini-vision'\nWHERE id = {{ $json.ev_id }};\n",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -328,7 +328,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO public.evidence(event_id, evidence_type, provider, url, snippet)\nVALUES (\n  {{ $node[\"CODE.DET.PARSE_JSON\"].json.ev_id }},\n  'satellite',\n  'openai:gpt-4.1-mini',\n  NULL,\n  {{ $node[\"CODE.DET.PARSE_JSON\"].json.notes\n       ? \"'\" + $node[\"CODE.DET.PARSE_JSON\"].json.notes.replace(/'/g, \"''\") + \"'\"\n       : 'NULL'\n  }}\n);",
+        "query": "=INSERT INTO public.evidence(event_id, evidence_type, provider, url, snippet)\nVALUES (\n  {{ $node[\"CODE.DET.PARSE_JSON\"].json.ev_id }},\n  'satellite',\n  'openai:gpt-4.1-mini',\n  NULL,\n  {{ $node[\"CODE.DET.PARSE_JSON\"].json.notes\n       ? \"'\" + $node[\"CODE.DET.PARSE_JSON\"].json.notes.replace(/'/g, \"''\") + \"'\"\n       : 'NULL'\n  }}\n);",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",

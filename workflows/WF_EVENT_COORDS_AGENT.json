@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT e.id, e.src_url, e.src_title, e.short_summary,\n       e.src_published_at, e.event_date,\n       e.lat, e.lon, e.has_photo\nFROM public.events e\nWHERE e.id = {{ $json.event_id }};",
+        "query": "=SELECT e.id, e.src_url, e.src_title, e.short_summary,\n       e.src_published_at, e.event_date,\n       e.lat, e.lon, e.has_photo\nFROM public.events e\nWHERE e.id = {{ $json.event_id }};",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -184,7 +184,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE public.events\nSET lat = {{ $json.lat !== null ? $json.lat : 'NULL' }},\n    lon = {{ $json.lon !== null ? $json.lon : 'NULL' }}\nWHERE id = {{ $json.ev_id }}\nRETURNING id AS ev_id, lat, lon;",
+        "query": "=UPDATE public.events\nSET lat = {{ $json.lat !== null ? $json.lat : 'NULL' }},\n    lon = {{ $json.lon !== null ? $json.lon : 'NULL' }}\nWHERE id = {{ $json.ev_id }}\nRETURNING id AS ev_id, lat, lon;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",

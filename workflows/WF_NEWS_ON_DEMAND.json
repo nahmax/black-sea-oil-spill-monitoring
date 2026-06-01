@@ -1,533 +1,556 @@
-{
-  "name": "WF_NEWS_ON_DEMAND",
-  "nodes": [
-    {
-      "parameters": {
-        "workflowInputs": {
-          "values": [
-            {
-              "name": "from_iso"
-            },
-            {
-              "name": "to_iso"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        -384,
-        -208
-      ],
-      "id": "b4f3a608-3952-4dea-ae69-cf46d3ed999d",
-      "name": "When Executed by Another Workflow"
-    },
-    {
-      "parameters": {
-        "jsCode": "const inJson = $json;\nlet { from_iso, to_iso } = inJson;\n\nif (!to_iso) {\n  const now = new Date();\n  to_iso = now.toISOString();\n}\nif (!from_iso) {\n  const to = new Date(to_iso);\n  const from = new Date(to.getTime() - 3 * 24 * 60 * 60 * 1000);\n  from_iso = from.toISOString();\n}\n\nreturn [{ json: { from_iso, to_iso } }];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        160,
-        -16
-      ],
-      "id": "916518e7-1f15-4856-b548-44e19ce57b23",
-      "name": "CODE.WINDOW_DEFAULT"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"gpt-4.1-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a news search agent. Find real news articles about oil or fuel spills in the Black Sea and adjacent straits (Kerch Strait, Bosporus, etc.). Return ONLY incidents that occurred on the sea surface (not prices, not political news). Respond in JSON.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Find up to 20 unique news articles about oil/fuel spills in the Black Sea region between {{ $json.from_iso }} and {{ $json.to_iso }}. For each article return: src_title, src_url, src_published_at (ISO), short_summary (2-3 sentences).\"\n    }\n  ],\n  \"temperature\": 0.2\n}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        368,
-        -16
-      ],
-      "id": "0836c6e1-b1c8-409a-82cf-685e3919ae2f",
-      "name": "HTTP.GPT_SEARCH_NEWS",
-      "credentials": {
-        "openAiApi": {
-          "id": "PfeWoQmbI2fRBGH2",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const raw = $json.choices[0].message.content || '';\n// Вирізати JSON-масив з відповіді\nconst match = raw.match(/\\[[\\s\\S]*\\]/);\nif (!match) {\n  return [];\n}\nlet arr;\ntry {\n  arr = JSON.parse(match[0]);\n} catch (e) {\n  return [];\n}\n\nconst from_iso = $items('CODE.WINDOW_DEFAULT')[0].json.from_iso;\nconst to_iso   = $items('CODE.WINDOW_DEFAULT')[0].json.to_iso;\n\nconst from = new Date(from_iso);\nconst to   = new Date(to_iso);\n\nconst out = [];\nfor (const item of arr) {\n  const p = new Date(item.src_published_at);\n  if (isNaN(p.getTime())) continue;\n  if (p < from || p > to) continue;\n\n  out.push({\n    json: {\n      src_title: item.src_title,\n      src_url: item.src_url,\n      src_published_at: p.toISOString(),\n      short_text: item.short_summary,\n      window_from: from_iso,\n      window_to: to_iso\n    }\n  });\n}\n\nreturn out;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        576,
-        -16
-      ],
-      "id": "dd8c8061-ecda-42cc-91c1-5691dc7cf975",
-      "name": "CODE.PARSE_GPT_SEARCH"
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-4o-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4O-MINI"
-        },
-        "responses": {
-          "values": [
-            {
-              "content": "=System:\nYou are an analyst for Black Sea oil spills. Given one candidate news article, decide if it describes a REAL oil or fuel spill incident on the water surface in the Black Sea or adjacent straits.\nAnswer in strict JSON.\n\nUser:\nTitle: {{ $json.src_title }}\nURL: {{ $json.src_url }}\nPublished at: {{ $json.src_published_at }}\nShort text: {{ $json.short_text }}\n\nReturn JSON:\n{\n  \"is_oil_black_sea\": true | false,\n  \"event_date\": \"YYYY-MM-DD\" | null,\n  \"short_summary\": \"short Ukrainian summary (2–3 sentences)\"\n}\n"
-            }
-          ]
-        },
-        "builtInTools": {},
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2,
-      "position": [
-        784,
-        -16
-      ],
-      "id": "296497dd-eabb-4bb1-bb40-afae962514f9",
-      "name": "CLF.NEWS_RELEVANT",
-      "credentials": {
-        "openAiApi": {
-          "id": "PfeWoQmbI2fRBGH2",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const cls = $input.all();                    \nconst src = $items('CODE.PARSE_GPT_SEARCH');\n\nconst out = [];\nfor (let i = 0; i < src.length; i++) {\n  out.push({ json: { ...src[i].json, cls: cls[i].json } });\n}\nreturn out;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1328,
-        -16
-      ],
-      "id": "c7066c40-34bc-4819-a87a-acc8d85da9a9",
-      "name": "CODE.MERGE_CLF"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "ad19e661-3d29-4630-b65c-9ad14f3d3a02",
-              "leftValue": "={{ $json.cls.is_oil_black_sea === true }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1504,
-        -16
-      ],
-      "id": "050f8c71-6ef8-4398-9ec3-5728085cee18",
-      "name": "IF.RELEVANT"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH ins AS (\n  INSERT INTO public.events (\n    src_url,\n    src_title,\n    src_source,\n    src_lang,\n    src_published_at,\n    event_date,\n    short_summary,\n    is_oil_black_sea,\n    llm_extract,\n    hash\n  )\n  VALUES (\n    '{{ ($json.src_url || \"\").replace(/'/g, \"''\") }}',\n    '{{ ($json.src_title || \"\").replace(/'/g, \"''\") }}',\n    '{{ $json.src_source }}',\n    '{{ $json.src_lang }}',\n    '{{ $json.src_published_at }}',\n    ({{ $json.cls.event_date ? \"'\" + $json.cls.event_date + \"'\" : 'NULL' }})::date,\n    '{{ ($json.cls.short_summary || \"\").replace(/'/g, \"''\") }}',\n    {{ $json.cls.is_oil_black_sea ? 'true' : 'false' }},\n    '{{ JSON.stringify($json.cls).replace(/'/g, \"''\") }}'::jsonb,\n    public.compute_event_hash(\n      '{{ ($json.src_url || \"\").replace(/'/g, \"''\") }}',\n      '{{ ($json.src_title || \"\").replace(/'/g, \"''\") }}',\n      '{{ $json.src_published_at }}'\n    )\n  )\n  ON CONFLICT (hash) DO NOTHING\n  RETURNING *\n)\nSELECT\n  id,\n  src_title,\n  src_url,\n  src_published_at,\n  event_date,\n  short_summary,\n  is_oil_black_sea,\n  llm_extract\nFROM ins;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        1744,
-        -32
-      ],
-      "id": "62b0fdab-8235-4cc6-b2dc-49ae2ffd957b",
-      "name": "PG.UPSERT_EVENT",
-      "credentials": {
-        "postgres": {
-          "id": "6wOPCgtTsfgkpNTy",
-          "name": "Postgres account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const rows = $input.all().map(i => i.json);\n\nlet summary = '';\nif (rows.length === 0) {\n  summary = 'Нових подій за цей період не знайдено.';\n} else {\n  summary = `Знайдено ${rows.length} нових подій, додано до бази.\\n\\n` +\n    rows.map(ev => {\n      const date =\n        ev.event_date ||\n        (ev.src_published_at ? ev.src_published_at.slice(0, 10) : 'дата невідома');\n\n      // Беремо український summary з поля short_summary,\n      // якщо його раптом немає — можна спробувати витягнути з llm_extract.short_summary\n      const short =\n        ev.short_summary ||\n        (ev.llm_extract && ev.llm_extract.short_summary) ||\n        '';\n\n      return `• [${date}] ${ev.src_title}\\n  ${short}\\n  Джерело: ${ev.src_url}`;\n    }).join('\\n\\n');\n}\n\nreturn [{\n  json: {\n    new_events: rows,\n    summary_text: summary\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2656,
-        -16
-      ],
-      "id": "c85cb061-cf8f-41e3-8280-2aec81d29ac1",
-      "name": "WRAP_RESULT"
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        -384,
-        -16
-      ],
-      "id": "debdae6e-54a1-422d-87db-9d535a93e81c",
-      "name": "When clicking ‘Execute workflow’",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "// Статические значения\nconst from_iso = \"2010-11-20T13:42:30.620Z\";\nconst to_iso   = \"2014-11-23T13:42:30.620Z\";\n\n// В n8n нужно вернуть массив items\nreturn [\n  {\n    json: {\n      from_iso,\n      to_iso,\n    },\n  },\n];\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -112,
-        -16
-      ],
-      "id": "67881755-bc47-468f-bcf1-564e728f9b34",
-      "name": "Code in JavaScript",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const j = item.json;\n  let text = '';\n\n  if (Array.isArray(j.output) &&\n      j.output[0] &&\n      Array.isArray(j.output[0].content) &&\n      j.output[0].content[0] &&\n      typeof j.output[0].content[0].text === 'string') {\n    text = j.output[0].content[0].text;\n  } else if (typeof j.text === 'string') {\n    text = j.text;\n  } else {\n    text = '';\n  }\n\n  let parsed = {};\n  try {\n    parsed = JSON.parse(text);\n  } catch (e) {\n    parsed = {};\n  }\n\n  return { json: parsed };\n});"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1136,
-        -16
-      ],
-      "id": "a86d7b38-b1c4-4062-a720-6f1a6fdcb331",
-      "name": "CODE.PARSE_CLF"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  id,\n  coalesce(src_title, '')       AS src_title,\n  coalesce(short_summary, '')   AS short_summary\nFROM public.events\nWHERE is_oil_black_sea = true\n  AND title_emb IS NULL\nORDER BY id\nLIMIT 100;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        1392,
-        256
-      ],
-      "id": "b4b9ab73-9ff5-45b6-bc83-82bcc4254d1b",
-      "name": "PG.GET_NEEDS_EMB",
-      "credentials": {
-        "postgres": {
-          "id": "6wOPCgtTsfgkpNTy",
-          "name": "Postgres account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/embeddings",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": \"={{ $json.src_title + '. ' + $json.short_summary }}\"\n}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        1600,
-        256
-      ],
-      "id": "83d621ca-a87c-47dc-aa28-2eee04cb798a",
-      "name": "OpenAI Embeddings",
-      "credentials": {
-        "openAiApi": {
-          "id": "PfeWoQmbI2fRBGH2",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Всі відповіді від OpenAI (embeddings)\nconst embItems = $input.all();\n\n// Вихідні рядки з ноди PG.GET_NEEDS_EMB (там є id)\nconst srcItems = $items('PG.GET_NEEDS_EMB', 0);  // 0 – основний вихід\n\nreturn embItems.map((item, index) => {\n  const src = srcItems[index].json;              // беремо відповідний рядок з БД\n  const emb = item.json.data[0].embedding;       // вектор з відповіді OpenAI\n\n  return {\n    json: {\n      id: src.id,                                // ТУТ уже є id\n      emb_str: '[' + emb.join(',') + ']'\n    }\n  };\n});"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1808,
-        256
-      ],
-      "id": "3d97cf9d-9845-4ffe-b9df-dbe9056559a6",
-      "name": "FORMAT_EMB_VECTOR"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE public.events\nSET title_emb = $2::vector\nWHERE id = $1;",
-        "options": {
-          "queryReplacement": "=$1: ={{ $json.id }}\n\n$2: ={{ $json.emb_str }}"
-        }
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        2016,
-        256
-      ],
-      "id": "ddb95e5f-37d7-4a6b-92af-3bae367bbcb4",
-      "name": "PG.UPDATE_TITLE_EMB",
-      "credentials": {
-        "postgres": {
-          "id": "6wOPCgtTsfgkpNTy",
-          "name": "Postgres account"
-        }
-      }
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        2208,
-        -16
-      ],
-      "id": "005c80ab-3f5a-4d30-9a57-559bfc8a7dae",
-      "name": "Merge"
-    }
-  ],
-  "pinData": {},
-  "connections": {
-    "When Executed by Another Workflow": {
-      "main": [
-        [
-          {
-            "node": "CODE.WINDOW_DEFAULT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CODE.WINDOW_DEFAULT": {
-      "main": [
-        [
-          {
-            "node": "HTTP.GPT_SEARCH_NEWS",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP.GPT_SEARCH_NEWS": {
-      "main": [
-        [
-          {
-            "node": "CODE.PARSE_GPT_SEARCH",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CODE.PARSE_GPT_SEARCH": {
-      "main": [
-        [
-          {
-            "node": "CLF.NEWS_RELEVANT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CLF.NEWS_RELEVANT": {
-      "main": [
-        [
-          {
-            "node": "CODE.PARSE_CLF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CODE.MERGE_CLF": {
-      "main": [
-        [
-          {
-            "node": "IF.RELEVANT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF.RELEVANT": {
-      "main": [
-        [
-          {
-            "node": "PG.UPSERT_EVENT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "PG.UPSERT_EVENT": {
-      "main": [
-        [
-          {
-            "node": "PG.GET_NEEDS_EMB",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "When clicking ‘Execute workflow’": {
-      "main": [
-        [
-          {
-            "node": "Code in JavaScript",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code in JavaScript": {
-      "main": [
-        [
-          {
-            "node": "CODE.WINDOW_DEFAULT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CODE.PARSE_CLF": {
-      "main": [
-        [
-          {
-            "node": "CODE.MERGE_CLF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "WRAP_RESULT": {
-      "main": [
-        []
-      ]
-    },
-    "PG.GET_NEEDS_EMB": {
-      "main": [
-        [
-          {
-            "node": "OpenAI Embeddings",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Embeddings": {
-      "main": [
-        [
-          {
-            "node": "FORMAT_EMB_VECTOR",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "FORMAT_EMB_VECTOR": {
-      "main": [
-        [
-          {
-            "node": "PG.UPDATE_TITLE_EMB",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "PG.UPDATE_TITLE_EMB": {
-      "main": [
-        [
-          {
-            "node": "Merge",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge": {
-      "main": [
-        [
-          {
-            "node": "WRAP_RESULT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "versionId": "9e1ddfd6-7a4d-4ca8-8f08-67f81cbc67af",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
-  },
-  "id": "5ipdMJUXPklvbhzH",
-  "tags": [
-    {
-      "updatedAt": "2025-11-23T13:11:38.285Z",
-      "createdAt": "2025-11-23T13:11:38.285Z",
-      "id": "MjkrKVUMVRrVnT5U",
-      "name": "nafta2"
-    }
-  ]
+﻿{
+    "name":  "WF_NEWS_ON_DEMAND",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "from_iso"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "to_iso"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -384,
+                                       -208
+                                   ],
+                      "id":  "b4f3a608-3952-4dea-ae69-cf46d3ed999d",
+                      "name":  "When Executed by Another Workflow"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const inJson = $json;\nlet { from_iso, to_iso } = inJson;\n\nif (!to_iso) {\n  const now = new Date();\n  to_iso = now.toISOString();\n}\nif (!from_iso) {\n  const to = new Date(to_iso);\n  const from = new Date(to.getTime() - 3 * 24 * 60 * 60 * 1000);\n  from_iso = from.toISOString();\n}\n\nreturn [{ json: { from_iso, to_iso } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       160,
+                                       -16
+                                   ],
+                      "id":  "916518e7-1f15-4856-b548-44e19ce57b23",
+                      "name":  "CODE.WINDOW_DEFAULT"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.openai.com/v1/chat/completions",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "openAiApi",
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={\n  \"model\": \"gpt-4.1-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a news search agent. Find real news articles about oil or fuel spills in the Black Sea and adjacent straits (Kerch Strait, Bosporus, etc.). Return ONLY incidents that occurred on the sea surface (not prices, not political news). Respond in JSON.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Find up to 20 unique news articles about oil/fuel spills in the Black Sea region between {{ $json.from_iso }} and {{ $json.to_iso }}. For each article return: src_title, src_url, src_published_at (ISO), short_summary (2-3 sentences).\"\n    }\n  ],\n  \"temperature\": 0.2\n}\n",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.3,
+                      "position":  [
+                                       368,
+                                       -16
+                                   ],
+                      "id":  "0836c6e1-b1c8-409a-82cf-685e3919ae2f",
+                      "name":  "HTTP.GPT_SEARCH_NEWS",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "PfeWoQmbI2fRBGH2",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const raw = $json.choices[0].message.content || \u0027\u0027;\n// Р’РёСЂС–Р·Р°С‚Рё JSON-РјР°СЃРёРІ Р· РІС–РґРїРѕРІС–РґС–\nconst match = raw.match(/\\[[\\s\\S]*\\]/);\nif (!match) {\n  return [];\n}\nlet arr;\ntry {\n  arr = JSON.parse(match[0]);\n} catch (e) {\n  return [];\n}\n\nconst from_iso = $items(\u0027CODE.WINDOW_DEFAULT\u0027)[0].json.from_iso;\nconst to_iso   = $items(\u0027CODE.WINDOW_DEFAULT\u0027)[0].json.to_iso;\n\nconst from = new Date(from_iso);\nconst to   = new Date(to_iso);\n\nconst out = [];\nfor (const item of arr) {\n  const p = new Date(item.src_published_at);\n  if (isNaN(p.getTime())) continue;\n  if (p \u003c from || p \u003e to) continue;\n\n  out.push({\n    json: {\n      src_title: item.src_title,\n      src_url: item.src_url,\n      src_published_at: p.toISOString(),\n      short_text: item.short_summary,\n      window_from: from_iso,\n      window_to: to_iso\n    }\n  });\n}\n\nreturn out;"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       576,
+                                       -16
+                                   ],
+                      "id":  "dd8c8061-ecda-42cc-91c1-5691dc7cf975",
+                      "name":  "CODE.PARSE_GPT_SEARCH"
+                  },
+                  {
+                      "parameters":  {
+                                         "modelId":  {
+                                                         "__rl":  true,
+                                                         "value":  "gpt-4o-mini",
+                                                         "mode":  "list",
+                                                         "cachedResultName":  "GPT-4O-MINI"
+                                                     },
+                                         "responses":  {
+                                                           "values":  [
+                                                                          {
+                                                                              "content":  "=System:\nYou are an analyst for Black Sea oil spills. Given one candidate news article, decide if it describes a REAL oil or fuel spill incident on the water surface in the Black Sea or adjacent straits.\nAnswer in strict JSON.\n\nUser:\nTitle: {{ $json.src_title }}\nURL: {{ $json.src_url }}\nPublished at: {{ $json.src_published_at }}\nShort text: {{ $json.short_text }}\n\nReturn JSON:\n{\n  \"is_oil_black_sea\": true | false,\n  \"event_date\": \"YYYY-MM-DD\" | null,\n  \"short_summary\": \"short Ukrainian summary (2вЂ“3 sentences)\"\n}\n"
+                                                                          }
+                                                                      ]
+                                                       },
+                                         "builtInTools":  {
+
+                                                          },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.openAi",
+                      "typeVersion":  2,
+                      "position":  [
+                                       784,
+                                       -16
+                                   ],
+                      "id":  "296497dd-eabb-4bb1-bb40-afae962514f9",
+                      "name":  "CLF.NEWS_RELEVANT",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "PfeWoQmbI2fRBGH2",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const cls = $input.all();                    \nconst src = $items(\u0027CODE.PARSE_GPT_SEARCH\u0027);\n\nconst out = [];\nfor (let i = 0; i \u003c src.length; i++) {\n  out.push({ json: { ...src[i].json, cls: cls[i].json } });\n}\nreturn out;"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1328,
+                                       -16
+                                   ],
+                      "id":  "c7066c40-34bc-4819-a87a-acc8d85da9a9",
+                      "name":  "CODE.MERGE_CLF"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ad19e661-3d29-4630-b65c-9ad14f3d3a02",
+                                                                                   "leftValue":  "={{ $json.cls.is_oil_black_sea === true }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "true",
+                                                                                                    "singleValue":  true
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1504,
+                                       -16
+                                   ],
+                      "id":  "050f8c71-6ef8-4398-9ec3-5728085cee18",
+                      "name":  "IF.RELEVANT"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH ins AS (\n  INSERT INTO public.events (\n    src_url,\n    src_title,\n    src_source,\n    src_lang,\n    src_published_at,\n    event_date,\n    short_summary,\n    is_oil_black_sea,\n    llm_extract,\n    hash\n  )\n  VALUES (\n    \u0027{{ ($json.src_url || \"\").replace(/\u0027/g, \"\u0027\u0027\") }}\u0027,\n    \u0027{{ ($json.src_title || \"\").replace(/\u0027/g, \"\u0027\u0027\") }}\u0027,\n    \u0027{{ $json.src_source }}\u0027,\n    \u0027{{ $json.src_lang }}\u0027,\n    \u0027{{ $json.src_published_at }}\u0027,\n    ({{ $json.cls.event_date ? \"\u0027\" + $json.cls.event_date + \"\u0027\" : \u0027NULL\u0027 }})::date,\n    \u0027{{ ($json.cls.short_summary || \"\").replace(/\u0027/g, \"\u0027\u0027\") }}\u0027,\n    {{ $json.cls.is_oil_black_sea ? \u0027true\u0027 : \u0027false\u0027 }},\n    \u0027{{ JSON.stringify($json.cls).replace(/\u0027/g, \"\u0027\u0027\") }}\u0027::jsonb,\n    public.compute_event_hash(\n      \u0027{{ ($json.src_url || \"\").replace(/\u0027/g, \"\u0027\u0027\") }}\u0027,\n      \u0027{{ ($json.src_title || \"\").replace(/\u0027/g, \"\u0027\u0027\") }}\u0027,\n      \u0027{{ $json.src_published_at }}\u0027\n    )\n  )\n  ON CONFLICT (hash) DO NOTHING\n  RETURNING *\n)\nSELECT\n  id,\n  src_title,\n  src_url,\n  src_published_at,\n  event_date,\n  short_summary,\n  is_oil_black_sea,\n  llm_extract\nFROM ins;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1744,
+                                       -32
+                                   ],
+                      "id":  "62b0fdab-8235-4cc6-b2dc-49ae2ffd957b",
+                      "name":  "PG.UPSERT_EVENT",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "6wOPCgtTsfgkpNTy",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const rows = $input.all().map(i =\u003e i.json);\n\nlet summary = \u0027\u0027;\nif (rows.length === 0) {\n  summary = \u0027Новых подій за цей період не знайдено.\u0027;\n} else {\n  const lines = [];\n  for (const ev of rows) {\n    const date =\n      ev.event_date ||\n      (ev.src_published_at ? ev.src_published_at.slice(0, 10) : \u0027дата невідома\u0027);\n\n    const short =\n      ev.short_summary ||\n      (ev.llm_extract \u0026\u0026 ev.llm_extract.short_summary) ||\n      \u0027\u0027;\n\n    lines.push(`• [${date}] ${ev.src_title}\n  ${short}\n  Джерело: ${ev.src_url}`);\n  }\n\n  summary = `Знайдено ${rows.length} нових подій, додано до бази.\n\n` + lines.join(\u0027\n\n\u0027);\n}\n\nreturn [{\n  json: {\n    new_events: rows,\n    summary_text: summary\n  }\n}];",
+                                         "mode":  "runOnceForAllItems"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2656,
+                                       -16
+                                   ],
+                      "id":  "c85cb061-cf8f-41e3-8280-2aec81d29ac1",
+                      "name":  "WRAP_RESULT"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.manualTrigger",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -384,
+                                       -16
+                                   ],
+                      "id":  "debdae6e-54a1-422d-87db-9d535a93e81c",
+                      "name":  "When clicking вЂExecute workflowвЂ™",
+                      "disabled":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// РЎС‚Р°С‚РёС‡РµСЃРєРёРµ Р·РЅР°С‡РµРЅРёСЏ\nconst from_iso = \"2010-11-20T13:42:30.620Z\";\nconst to_iso   = \"2014-11-23T13:42:30.620Z\";\n\n// Р’ n8n РЅСѓР¶РЅРѕ РІРµСЂРЅСѓС‚СЊ РјР°СЃСЃРёРІ items\nreturn [\n  {\n    json: {\n      from_iso,\n      to_iso,\n    },\n  },\n];\n"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -112,
+                                       -16
+                                   ],
+                      "id":  "67881755-bc47-468f-bcf1-564e728f9b34",
+                      "name":  "Code in JavaScript",
+                      "disabled":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const items = $input.all();\n\nreturn items.map(item =\u003e {\n  const j = item.json;\n  let text = \u0027\u0027;\n\n  if (Array.isArray(j.output) \u0026\u0026\n      j.output[0] \u0026\u0026\n      Array.isArray(j.output[0].content) \u0026\u0026\n      j.output[0].content[0] \u0026\u0026\n      typeof j.output[0].content[0].text === \u0027string\u0027) {\n    text = j.output[0].content[0].text;\n  } else if (typeof j.text === \u0027string\u0027) {\n    text = j.text;\n  } else {\n    text = \u0027\u0027;\n  }\n\n  let parsed = {};\n  try {\n    parsed = JSON.parse(text);\n  } catch (e) {\n    parsed = {};\n  }\n\n  return { json: parsed };\n});"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1136,
+                                       -16
+                                   ],
+                      "id":  "a86d7b38-b1c4-4062-a720-6f1a6fdcb331",
+                      "name":  "CODE.PARSE_CLF"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT\n  id,\n  coalesce(src_title, \u0027\u0027)       AS src_title,\n  coalesce(short_summary, \u0027\u0027)   AS short_summary\nFROM public.events\nWHERE is_oil_black_sea = true\n  AND title_emb IS NULL\nORDER BY id\nLIMIT 100;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1392,
+                                       256
+                                   ],
+                      "id":  "b4b9ab73-9ff5-45b6-bc83-82bcc4254d1b",
+                      "name":  "PG.GET_NEEDS_EMB",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "6wOPCgtTsfgkpNTy",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.openai.com/v1/embeddings",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "openAiApi",
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": \"={{ $json.src_title + \u0027. \u0027 + $json.short_summary }}\"\n}\n",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.3,
+                      "position":  [
+                                       1600,
+                                       256
+                                   ],
+                      "id":  "83d621ca-a87c-47dc-aa28-2eee04cb798a",
+                      "name":  "OpenAI Embeddings",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "PfeWoQmbI2fRBGH2",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Р’СЃС– РІС–РґРїРѕРІС–РґС– РІС–Рґ OpenAI (embeddings)\nconst embItems = $input.all();\n\n// Р’РёС…С–РґРЅС– СЂСЏРґРєРё Р· РЅРѕРґРё PG.GET_NEEDS_EMB (С‚Р°Рј С” id)\nconst srcItems = $items(\u0027PG.GET_NEEDS_EMB\u0027, 0);  // 0 вЂ“ РѕСЃРЅРѕРІРЅРёР№ РІРёС…С–Рґ\n\nreturn embItems.map((item, index) =\u003e {\n  const src = srcItems[index].json;              // Р±РµСЂРµРјРѕ РІС–РґРїРѕРІС–РґРЅРёР№ СЂСЏРґРѕРє Р· Р‘Р”\n  const emb = item.json.data[0].embedding;       // РІРµРєС‚РѕСЂ Р· РІС–РґРїРѕРІС–РґС– OpenAI\n\n  return {\n    json: {\n      id: src.id,                                // РўРЈРў СѓР¶Рµ С” id\n      emb_str: \u0027[\u0027 + emb.join(\u0027,\u0027) + \u0027]\u0027\n    }\n  };\n});"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1808,
+                                       256
+                                   ],
+                      "id":  "3d97cf9d-9845-4ffe-b9df-dbe9056559a6",
+                      "name":  "FORMAT_EMB_VECTOR"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "UPDATE public.events\nSET title_emb = $2::vector\nWHERE id = $1;",
+                                         "options":  {
+                                                         "queryReplacement":  "=$1: ={{ $json.id }}\n\n$2: ={{ $json.emb_str }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2016,
+                                       256
+                                   ],
+                      "id":  "ddb95e5f-37d7-4a6b-92af-3bae367bbcb4",
+                      "name":  "PG.UPDATE_TITLE_EMB",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "6wOPCgtTsfgkpNTy",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.merge",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       2208,
+                                       -16
+                                   ],
+                      "id":  "005c80ab-3f5a-4d30-9a57-559bfc8a7dae",
+                      "name":  "Merge"
+                  }
+              ],
+    "pinData":  {
+
+                },
+    "connections":  {
+                        "When Executed by Another Workflow":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "CODE.WINDOW_DEFAULT",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                        "CODE.WINDOW_DEFAULT":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "HTTP.GPT_SEARCH_NEWS",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "HTTP.GPT_SEARCH_NEWS":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "CODE.PARSE_GPT_SEARCH",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "CODE.PARSE_GPT_SEARCH":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "CLF.NEWS_RELEVANT",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "CLF.NEWS_RELEVANT":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "CODE.PARSE_CLF",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "CODE.MERGE_CLF":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "IF.RELEVANT",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "IF.RELEVANT":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "PG.UPSERT_EVENT",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "PG.UPSERT_EVENT":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "PG.GET_NEEDS_EMB",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 },
+                                                                 {
+                                                                     "node":  "Merge",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "When clicking вЂExecute workflowвЂ™":  {
+                                                                     "main":  [
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "Code in JavaScript",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      }
+                                                                                  ]
+                                                                              ]
+                                                                 },
+                        "Code in JavaScript":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "CODE.WINDOW_DEFAULT",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "CODE.PARSE_CLF":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "CODE.MERGE_CLF",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "WRAP_RESULT":  {
+                                            "main":  [
+                                                         [
+
+                                                         ]
+                                                     ]
+                                        },
+                        "PG.GET_NEEDS_EMB":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "OpenAI Embeddings",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "OpenAI Embeddings":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "FORMAT_EMB_VECTOR",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "FORMAT_EMB_VECTOR":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "PG.UPDATE_TITLE_EMB",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "PG.UPDATE_TITLE_EMB":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Merge",
+                                                                         "type":  "main",
+                                                                         "index":  1
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Merge":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "node":  "WRAP_RESULT",
+                                                           "type":  "main",
+                                                           "index":  0
+                                                       }
+                                                   ]
+                                               ]
+                                  }
+                    },
+    "active":  false,
+    "settings":  {
+                     "executionOrder":  "v1"
+                 },
+    "versionId":  "9e1ddfd6-7a4d-4ca8-8f08-67f81cbc67af",
+    "meta":  {
+                 "templateCredsSetupCompleted":  true,
+                 "instanceId":  "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+             },
+    "id":  "5ipdMJUXPklvbhzH",
+    "tags":  [
+                 {
+                     "updatedAt":  "2025-11-23T13:11:38.285Z",
+                     "createdAt":  "2025-11-23T13:11:38.285Z",
+                     "id":  "MjkrKVUMVRrVnT5U",
+                     "name":  "nafta2"
+                 }
+             ]
 }
