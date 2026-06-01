@@ -1,0 +1,165 @@
+{
+  "name": "WF_EVENT_UPSERT_MANUAL",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "src_title"
+            },
+            {
+              "name": "src_url"
+            },
+            {
+              "name": "event_date",
+              "type": "any"
+            },
+            {
+              "name": "short_summary"
+            },
+            {
+              "name": "lat",
+              "type": "any"
+            },
+            {
+              "name": "lon",
+              "type": "any"
+            },
+            {
+              "name": "notes",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "a653cd6d-48dc-4464-aec9-5845da954507",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.events (\n  src_title,\n  src_url,\n  src_source,\n  src_lang,\n  src_published_at,\n  event_date,\n  short_summary,\n  lat,\n  lon,\n  is_oil_black_sea,\n  llm_extract,\n  hash\n)\nVALUES (\n  '{{ ($json.src_title || \"\").replace(/'/g, \"''\") }}',\n  '{{ ($json.src_url || \"\").replace(/'/g, \"''\") }}',\n  'manual',\n  'uk',\n  NOW(),\n  ({{ $json.event_date ? \"'\" + $json.event_date + \"'\" : 'NULL' }})::date,\n  NULLIF('{{ ($json.short_summary || \"\").replace(/'/g, \"''\") }}',''),\n  {{ $json.lat ? $json.lat : 'NULL' }},\n  {{ $json.lon ? $json.lon : 'NULL' }},\n  true,\n  jsonb_build_object(\n    'manual', true,\n    'notes', NULLIF('{{ ($json.notes || \"\").replace(/'/g, \"''\") }}','')\n  ),\n  public.compute_event_hash(\n    '{{ ($json.src_url   || \"\").replace(/'/g, \"''\") }}', \n    '{{ ($json.src_title || \"\").replace(/'/g, \"''\") }}', \n    NOW() -- TIMESTAMPTZ, ОК \n  )\n)\nON CONFLICT (hash) DO UPDATE\nSET\n  short_summary = COALESCE(EXCLUDED.short_summary, public.events.short_summary),\n  lat           = COALESCE(EXCLUDED.lat, public.events.lat),\n  lon           = COALESCE(EXCLUDED.lon, public.events.lon),\n  llm_extract   = public.events.llm_extract || EXCLUDED.llm_extract\nRETURNING\n  id,\n  src_title,\n  src_url,\n  src_published_at,\n  event_date,\n  short_summary,\n  lat,\n  lon;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        48,
+        192
+      ],
+      "id": "e2b15017-8437-47d5-b6bd-5e611cc9ccf3",
+      "name": "PG.UPSERT_MANUAL",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        192
+      ],
+      "id": "2f0f325d-9c9d-4d22-94ae-e775c9d30802",
+      "name": "When clicking ‘Execute workflow’",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Заглушка для теста WF_EVENT_UPSERT_MANUAL без Telegram и агентів\n// Повертаємо один item з полями, які очікує PG.UPSERT_EVENT.\n\nreturn [\n  {\n    json: {\n      src_title: 'Нове забруднення мазутом уздовж узбережжя Чорного моря',\n      src_url: 'https://en.iz.ru/en/1828496/2025-01-26/new-fuel-oil-emissions-were-recorded-black-sea-coastline',\n      // дата події (коли реально сталось) — з твоєго прикладу: 2024-01-26\n      event_date: '2024-01-26',\n      // короткий український summary (можеш переформулювати як хочеш)\n      short_summary: 'У січні 2024 року зафіксовано нові викиди мазуту на 17 ділянках узбережжя Чорного моря. Забруднено понад 63 км берегової лінії, залучено фахівців та волонтерів до очищення та моніторингу акваторії.',\n      // координати для тесту можна залишити null\n      lat: null,\n      lon: null,\n      // довільні нотатки для поля llm_extract.manual.notes\n      notes: 'test stub from CODE.TEST_STUB'\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        192
+      ],
+      "id": "295114b9-1b11-4cbb-8dae-e3a4b72f3b2e",
+      "name": "Code in JavaScript",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nreturn [{\n  json: {\n    events: rows,\n    message: rows.length\n      ? `Додано/оновлено ${rows.length} подію(ї) в базі.`\n      : 'Подія не була змінена.'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        192
+      ],
+      "id": "7804e711-556c-4b8e-abd1-45ed09fd92df",
+      "name": "WRAP_RESULT"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "PG.UPSERT_MANUAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        []
+      ]
+    },
+    "PG.UPSERT_MANUAL": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "543d6a10-da9c-4de4-a7ea-73dd3a344bd6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "9IMIjDVZxzQl78ph",
+  "tags": [
+    {
+      "updatedAt": "2025-11-23T13:11:38.285Z",
+      "createdAt": "2025-11-23T13:11:38.285Z",
+      "id": "MjkrKVUMVRrVnT5U",
+      "name": "nafta2"
+    }
+  ]
+}

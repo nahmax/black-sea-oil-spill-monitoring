@@ -1,0 +1,506 @@
+{
+  "name": "WF_EVENT_PUBLISH_AGENTt",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "event_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        -112
+      ],
+      "id": "a2def873-02c0-4d35-8fcb-5e02784eeaf7",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        160
+      ],
+      "id": "505511a0-82d9-421b-8ddb-775272cf3705",
+      "name": "When clicking ‘Execute workflow’",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Статические значения\nconst event_id = 95\n\n// В n8n нужно вернуть массив items\nreturn [\n  {\n    json: {\n      event_id\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        160
+      ],
+      "id": "de65570a-ef79-4f8a-9b0b-609431234550",
+      "name": "Code in JavaScript",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  e.id,\n  e.src_url,\n  e.src_title,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.lat,\n  e.lon,\n  e.verdict,\n  e.confidence,\n  e.has_photo,\n  e.s1_date\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        464,
+        80
+      ],
+      "id": "de762183-8345-4b01-a812-fdec1e8655f3",
+      "name": "PG.GET_EVENT_FOR_VIEW",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\n\nfunction fmtDate(iso) {\n  if (!iso) return '—';\n  const d = new Date(iso);\n  if (Number.isNaN(d.getTime())) return iso;\n  const y = d.getUTCFullYear();\n  const m = String(d.getUTCMonth()+1).padStart(2,'0');\n  const day = String(d.getUTCDate()).padStart(2,'0');\n  return `${y}-${m}-${day}`;\n}\n\nfunction fmtCoord(n) {\n  return (n === null || n === undefined) ? '—' : Number(n).toFixed(5);\n}\n\nconst evId   = e.id;\nconst url    = e.src_url || '—';\nconst title  = e.src_title || '—';\nconst pub    = fmtDate(e.src_published_at);\nconst evDate = fmtDate(e.event_date);\nconst lat    = fmtCoord(e.lat);\nconst lon    = fmtCoord(e.lon);\n\n// Вердикт\nlet verdictLine = 'Вердикт: —';\nif (e.verdict) {\n  const conf = (e.confidence !== null && e.confidence !== undefined)\n    ? ` (ймовірність ${Math.round(e.confidence * 100)}%)`\n    : '';\n  verdictLine = `Вердикт: ${e.verdict}${conf}`;\n}\n\n// Статус Sentinel-1\nlet s1Line = 'Sentinel-1: —';\nif (e.has_photo) {\n  // якщо є дата знімка — можна показати її\n  const s1Date = e.s1_date ? fmtDate(e.s1_date) : null;\n  s1Line = s1Date\n    ? `Sentinel-1: ✅ (${s1Date})`\n    : 'Sentinel-1: ✅';\n}\n\nconst lines = [\n  `Подія #${evId}`,\n  `Джерело: ${url}`,\n  `Дата: ${evDate} (публ.: ${pub})`,\n  '',\n  e.short_summary || 'Опис події наразі відсутній.',\n  '',\n  'Статус:',\n  `• Координати: ${lat},${lon}`,\n  `• ${s1Line}`,\n  `• ${verdictLine}`\n];\n\nreturn [{\n  json: {\n    event_id: evId,\n    text: lines.join('\\n')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        80
+      ],
+      "id": "c9de81d9-18a1-4811-9306-dbf18e0a6ff1",
+      "name": "CODE.RENDER_EVENT_TEXT"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  channel_id,\n  message_id\nFROM public.tg_posts\nWHERE event_id = {{ $items('PG.GET_EVENT_FOR_VIEW')[0].json.id }}\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        80
+      ],
+      "id": "8f2456b5-cf5b-46bb-9f1d-2fffe3c53874",
+      "name": "PG.CHECK_TG_POST",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e36e5846-82a9-4c0d-9429-79807d757f77",
+              "leftValue": "={{$json.message_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        80
+      ],
+      "id": "d914fcd4-f9e9-44d1-a7cb-90b305c26986",
+      "name": "IF.HAS_POST"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT (trim(both from value->>'id')) AS chat_id\nFROM public.agent_settings\nWHERE key = 'channel'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1328,
+        -144
+      ],
+      "id": "c18e1759-35de-4a76-a7ed-91c6e9a1c646",
+      "name": "PG.GET_CHANNEL_FROM_SETTINGS2",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text  = $items('CODE.RENDER_EVENT_TEXT')[0].json.text;\nconst rowMsg = $items('PG.CHECK_TG_POST')[0].json;\nconst rowCh  = $items('PG.GET_CHANNEL_FROM_SETTINGS2')[0].json;\n\nlet chatId = String(rowCh.chat_id || '');\nif (!chatId.startsWith('@') && !chatId.startsWith('-100')) {\n  chatId = `-100${chatId}`;\n}\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    message_id: rowMsg.message_id,\n    text,\n    parse_mode: 'HTML'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        -144
+      ],
+      "id": "0f95b1fb-7eaf-45fc-9ac8-8fd793a4ed5f",
+      "name": "CODE.TG_EDIT_PAYLOAD_AGENT"
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $json.chat_id }}",
+        "messageId": "={{ $json.message_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1808,
+        -144
+      ],
+      "id": "80fe9f35-92b9-4db7-a437-5a2af4d53cd3",
+      "name": "TG.EDIT_MESSAGE",
+      "webhookId": "2c3ca599-7762-4f22-8d85-aa9870227117",
+      "credentials": {
+        "telegramApi": {
+          "id": "jGHuJWHL0BF66J4y",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const baseEv = $items('PG.GET_EVENT_FOR_VIEW')[0].json;\nconst rowMsg = $items('PG.CHECK_TG_POST')[0].json;\nconst rowCh  = $items('PG.GET_CHANNEL_FROM_SETTINGS2')[0].json;\n\nlet chatId = String(rowCh.chat_id || '');\nif (!chatId.startsWith('@') && !chatId.startsWith('-100')) {\n  chatId = `-100${chatId}`;\n}\n\nreturn [{\n  json: {\n    event_id: baseEv.id,\n    channel_id: chatId,\n    message_id: rowMsg.message_id,\n    created: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -144
+      ],
+      "id": "734329fb-8d3d-400e-a865-243b04da68ff",
+      "name": "WRAP_RESULT (update)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT (trim(both from value->>'id')) AS chat_id\nFROM public.agent_settings\nWHERE key = 'channel'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1328,
+        192
+      ],
+      "id": "888b8193-107b-4bdc-9a6b-ce405db69cbe",
+      "name": "PG.GET_CHANNEL_FROM_SETTINGS",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text  = $items('CODE.RENDER_EVENT_TEXT')[0].json.text;\nconst rowCh = $items('PG.GET_CHANNEL_FROM_SETTINGS')[0].json;\n\nlet chatId = String(rowCh.chat_id || '');\nif (!chatId.startsWith('@') && !chatId.startsWith('-100')) {\n  chatId = `-100${chatId}`;\n}\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        192
+      ],
+      "id": "5c1a7b49-6a03-4f48-a2ae-72b49c2c71eb",
+      "name": "CODE.TG_SEND_NEW"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1808,
+        192
+      ],
+      "id": "2b3dec9c-71f6-4b1d-b088-533571c4cf26",
+      "name": "TG.SEND_MESSAGE",
+      "webhookId": "acc131d1-ac72-4828-9f00-33934e1e8e48",
+      "credentials": {
+        "telegramApi": {
+          "id": "jGHuJWHL0BF66J4y",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const baseEv = $items('PG.GET_EVENT_FOR_VIEW')[0].json;\nconst rowCh  = $items('PG.GET_CHANNEL_FROM_SETTINGS')[0].json;\n\nconst msg = $json.result ?? $json;\nconst m = msg.message || msg.channel_post || msg;\n\nlet chatId = String(rowCh.chat_id || '');\nif (!chatId.startsWith('@') && !chatId.startsWith('-100')) {\n  chatId = `-100${chatId}`;\n}\n\nreturn [{\n  json: {\n    event_id: baseEv.id,\n    channel_id: chatId,\n    message_id: m.message_id\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        192
+      ],
+      "id": "587f49ca-4a2a-4d1f-97d2-a2d7a0b101f9",
+      "name": "CODE.EXTRACT_TG_MSG"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.tg_posts(event_id, channel_id, message_id)\nVALUES (\n  {{ $json.event_id }},\n  '{{ $json.channel_id }}',\n  {{ $json.message_id }}\n)\nON CONFLICT (event_id, channel_id) DO UPDATE\nSET message_id = EXCLUDED.message_id\nRETURNING event_id, channel_id, message_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2256,
+        192
+      ],
+      "id": "ffcf5c81-c453-4169-be12-fd53e0021f11",
+      "name": "PG.SAVE_TG_POST",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nreturn [{\n  json: {\n    event_id: row.event_id,\n    channel_id: row.channel_id,\n    message_id: row.message_id,\n    created: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        192
+      ],
+      "id": "0ea2ee59-e681-498e-9062-5a5020d73725",
+      "name": "WRAP_RESULT (create)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        []
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "PG.GET_EVENT_FOR_VIEW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.GET_EVENT_FOR_VIEW": {
+      "main": [
+        [
+          {
+            "node": "CODE.RENDER_EVENT_TEXT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.RENDER_EVENT_TEXT": {
+      "main": [
+        [
+          {
+            "node": "PG.CHECK_TG_POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.CHECK_TG_POST": {
+      "main": [
+        [
+          {
+            "node": "IF.HAS_POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.HAS_POST": {
+      "main": [
+        [
+          {
+            "node": "PG.GET_CHANNEL_FROM_SETTINGS2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG.GET_CHANNEL_FROM_SETTINGS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.GET_CHANNEL_FROM_SETTINGS2": {
+      "main": [
+        [
+          {
+            "node": "CODE.TG_EDIT_PAYLOAD_AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.TG_EDIT_PAYLOAD_AGENT": {
+      "main": [
+        [
+          {
+            "node": "TG.EDIT_MESSAGE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG.EDIT_MESSAGE": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT (update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.GET_CHANNEL_FROM_SETTINGS": {
+      "main": [
+        [
+          {
+            "node": "CODE.TG_SEND_NEW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.TG_SEND_NEW": {
+      "main": [
+        [
+          {
+            "node": "TG.SEND_MESSAGE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG.SEND_MESSAGE": {
+      "main": [
+        [
+          {
+            "node": "CODE.EXTRACT_TG_MSG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.EXTRACT_TG_MSG": {
+      "main": [
+        [
+          {
+            "node": "PG.SAVE_TG_POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.SAVE_TG_POST": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT (create)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "13630db1-6db2-4d46-a96f-d2d1e21359fa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "854MMR0ldalLCsY8",
+  "tags": [
+    {
+      "updatedAt": "2025-11-23T13:11:38.285Z",
+      "createdAt": "2025-11-23T13:11:38.285Z",
+      "id": "MjkrKVUMVRrVnT5U",
+      "name": "nafta2"
+    }
+  ]
+}

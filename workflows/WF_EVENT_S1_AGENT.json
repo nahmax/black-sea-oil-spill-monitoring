@@ -1,0 +1,698 @@
+{
+  "name": "WF_EVENT_S1_AGENT",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "event_id",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        -32
+      ],
+      "id": "c124549d-2384-47a2-8382-41b8b2ee7fc3",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        160
+      ],
+      "id": "93170818-93cb-47ae-9d4d-dca3cf9b516b",
+      "name": "When clicking ‘Execute workflow’",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Статические значения\nconst event_id = 177\n\n// В n8n нужно вернуть массив items\nreturn [\n  {\n    json: {\n      event_id\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        160
+      ],
+      "id": "749591ab-d463-4f2d-a279-6ea37026a192",
+      "name": "Code in JavaScript",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  e.id,\n  e.src_url,\n  e.src_title,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.lat,\n  e.lon,\n  e.has_photo\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        320,
+        160
+      ],
+      "id": "f1e23196-a533-4820-ba5f-9ad1685596f2",
+      "name": "PG.SELECT_EVENT_S1",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e801ba2b-a1ef-4cfa-bd3d-b036e09ecc8a",
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        160
+      ],
+      "id": "748da604-a479-46ce-94af-9e335761819b",
+      "name": "IF.EVENT_FOUND"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8019263b-3198-4a5a-b188-c50d43f5530c",
+              "leftValue": "={{$json.has_photo}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        160
+      ],
+      "id": "04e80ce2-8940-448f-b5bc-4bcc3a942671",
+      "name": "IF.HAS_PHOTO"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fa05f957-7272-4522-a077-75c1703ed75a",
+              "leftValue": "={{$json.lat}}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "bb20f0e8-c660-4903-b860-82fed7a997a3",
+              "leftValue": "={{$json.lon}}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1008,
+        160
+      ],
+      "id": "e77ea84f-f1f4-46a1-8502-964a8d76e92c",
+      "name": "IF.COORDS"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"hours_before\": 0,\n  \"hours_after\": 168,\n  \"bbox_km\": 6\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1232,
+        160
+      ],
+      "id": "4ffffc4d-33de-4c7d-9f1b-a8bef31071dc",
+      "name": "SET.S1_DEFAULTS"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ev = $('PG.SELECT_EVENT_S1').item.json;\n\nconst lat = Number(ev.lat);\nconst lon = Number(ev.lon);\n\nif (!Number.isFinite(lat) || !Number.isFinite(lon)) {\n  throw new Error(`Нема координат в PG.SELECT_EVENT_S1: lat=${ev.lat}, lon=${ev.lon}`);\n}\n\nconst eventTimeStr = ev.event_date ?? ev.src_published_at ?? new Date().toISOString();\n\nconst current = $input.item.json ?? {};\nconst hoursBefore = Number(current.hours_before ?? 48);\nconst hoursAfter  = Number(current.hours_after  ?? 48);\nconst bboxKm = Number(current.bbox_km ?? 6); // уже 6\n\nconst t = new Date(eventTimeStr);\nconst from = new Date(t.getTime() - hoursBefore * 3600 * 1000).toISOString();\nconst to   = new Date(t.getTime() + hoursAfter  * 3600 * 1000).toISOString();\n\n// км → градусы\nconst degLat = bboxKm / 111.0;\nconst degLon = bboxKm / (111.0 * Math.cos(lat * Math.PI / 180));\n\n// Полигон AOI\nconst minLat = lat - degLat;\nconst maxLat = lat + degLat;\nconst minLon = lon - degLon;\nconst maxLon = lon + degLon;\n\nconst aoi = [\n  [minLon, minLat],\n  [maxLon, minLat],\n  [maxLon, maxLat],\n  [minLon, maxLat],\n  [minLon, minLat],\n];\n\n\nconst meters = 2 * bboxKm * 1000;      \nconst px10m  = Math.round(meters / 10); \nconst size   = Math.max(768, Math.min(2048, px10m));\n\nreturn [{\n  json: {\n    lat,\n    lon,\n    from,\n    to,\n    aoi,\n    bbox: [minLon, minLat, maxLon, maxLat], \n    timerange: `${from}/${to}`,\n    width: 1024,   \n    height: 1024\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        160
+      ],
+      "id": "fafad209-20f4-4e03-8b5a-ce518caf61cf",
+      "name": "CODE.S1_WINDOW_AND_AOI"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.sentinel-hub.com/oauth/token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "client_credentials"
+            },
+            {
+              "name": "client_id",
+              "value": "своє вставити"
+            },
+            {
+              "name": "client_secret",
+              "value": "своє вставити"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1728,
+        304
+      ],
+      "id": "33a5db97-b633-4288-bb8f-a8b1d8355632",
+      "name": "Get token sentinel"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1984,
+        176
+      ],
+      "id": "65b7bcd6-fb13-425a-be64-db6d5178465c",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.sentinel-hub.com/api/v1/process",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "=application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "image/png"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": {\n    \"bounds\": {\n      \"geometry\": { \"type\": \"Polygon\",\n        \"coordinates\": [[[{{ $json.aoi[0][0] }},{{ $json.aoi[0][1] }}],\n                         [{{ $json.aoi[1][0] }},{{ $json.aoi[1][1] }}],\n                         [{{ $json.aoi[2][0] }},{{ $json.aoi[2][1] }}],\n                         [{{ $json.aoi[3][0] }},{{ $json.aoi[3][1] }}],\n                         [{{ $json.aoi[4][0] }},{{ $json.aoi[4][1] }}]]]\n      },\n      \"properties\": { \"crs\": \"http://www.opengis.net/def/crs/EPSG/0/4326\" }\n    },\n    \"data\": [{\n      \"type\": \"sentinel-1-grd\",\n      \"dataFilter\": {\n        \"timeRange\": { \"from\": \"{{$json.from}}\", \"to\": \"{{$json.to}}\" },\n        \"acquisitionMode\": \"IW\"\n      },\n      \"processing\": {\n        \"orthorectify\": true,\n        \"backCoeff\": \"SIGMA0_ELLIPSOID\",\n        \"reducer\": \"LATEST\"\n      }\n    }]\n  },\n  \"output\": {\n    \"width\": 1024,\n    \"height\": 1024,\n    \"responses\": [{ \"identifier\": \"default\", \"format\": { \"type\": \"image/png\" } }]\n  },\n  \"evalscript\": \"//VERSION=3\\nfunction setup(){return { input: [{ bands: [\\\"VV\\\"] }], output: [{ id: \\\"default\\\", bands: 3, sampleType: \\\"AUTO\\\" }]};}\\nfunction evaluatePixel(s){ const db = 10*Math.log10(Math.max(s.VV, 1e-8)); const v = Math.min(1, Math.max(0, (db + 25) / 25)); return [v,v,v]; }\"\n}\n",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2176,
+        176
+      ],
+      "id": "8ebf43a1-da27-440b-8893-8fdedf567e85",
+      "name": "HTTP.S1_PROCESS",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  channel_id,\n  message_id\nFROM public.tg_posts\nWHERE event_id = {{ $items('PG.SELECT_EVENT_S1')[0].json.id }}\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2384,
+        176
+      ],
+      "id": "48e212b2-02f8-43c6-827d-d7be2189be35",
+      "name": "PG.GET_TG_POST1",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT trim(both from value->>'id') AS chat_id\nFROM public.agent_settings\nWHERE key = 'channel'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2592,
+        176
+      ],
+      "id": "8c03de75-3a75-445a-988e-3379b9354d51",
+      "name": "PG.GET_CHANNEL_FROM_SETTINGS1",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ch = $items('PG.GET_CHANNEL_FROM_SETTINGS1')[0].json;\nconst post = $items('PG.GET_TG_POST1')[0].json;\n\nlet chatId = String(ch.chat_id || '');\nif (!chatId.startsWith('@') && !chatId.startsWith('-100')) {\n  chatId = `-100${chatId}`;\n}\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    reply_to_message_id: post.message_id\n  },\n  binary: {\n    data: $items('HTTP.S1_PROCESS')[0].binary.data\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        176
+      ],
+      "id": "db85416e-c689-4fcc-beec-827c70dae8c7",
+      "name": "CODE.TG_SEND_PAYLOAD"
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "={{ $json.chat_id }}",
+        "binaryData": true,
+        "additionalFields": {
+          "reply_to_message_id": "={{ $json.reply_to_message_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3008,
+        176
+      ],
+      "id": "f222e172-2529-47a3-b5ca-02443b01b236",
+      "name": "Send a document",
+      "webhookId": "325e6662-af8b-4841-b20a-b36d8097f6e2",
+      "credentials": {
+        "telegramApi": {
+          "id": "jGHuJWHL0BF66J4y",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const baseEv = $items('PG.SELECT_EVENT_S1')[0].json;\nconst ch = $items('PG.GET_CHANNEL_FROM_SETTINGS1')[0].json;\n\nconst msg = $json.result ?? $json;\nconst m = msg.message || msg.channel_post || msg;\n\nconst file = m.document || m.photo?.slice(-1)[0] || null;\n\nlet chatId = String(ch.chat_id || '');\nif (!chatId.startsWith('@') && !chatId.startsWith('-100')) {\n  chatId = `-100${chatId}`;\n}\n\nreturn [{\n  json: {\n    event_id: baseEv.id,\n    channel_id: chatId,\n    message_id: m.message_id,\n    file_id: file ? file.file_id : null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3216,
+        176
+      ],
+      "id": "75e01a85-ae4e-468c-a20b-a82108d379ba",
+      "name": "CODE.EXTRACT_TG_IDS"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.tg_media (event_id, message_id, file_id, kind)\nVALUES ({{$json.event_id }}, {{ $json.message_id }}, '{{$json.file_id  }}', 'document')\nON CONFLICT DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3456,
+        176
+      ],
+      "id": "1f59a6d5-f6e2-43fe-8e47-d96faaeaf6cf",
+      "name": "PG.SAVE_TG_MEDIA",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.events\n   SET has_photo = true\n WHERE id = {{ $('PG.SELECT_EVENT_S1').item.json.id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3664,
+        176
+      ],
+      "id": "d518ab6b-1d27-4c79-9538-6c35138bb50f",
+      "name": "PG.SAVE_TG_MEDIA1",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const baseEv = $items('PG.SELECT_EVENT_S1')[0].json;\n\nreturn [{\n  json: {\n    event_id: baseEv.id,\n    has_photo: true,\n    message: 'Супутниковий знімок Sentinel-1 отримано і додано як відповідь до поста в каналі.',\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3872,
+        176
+      ],
+      "id": "cc4493b1-383c-47fa-9519-7fd16d3b642b",
+      "name": "WRAP_RESULT"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "PG.SELECT_EVENT_S1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "PG.SELECT_EVENT_S1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.SELECT_EVENT_S1": {
+      "main": [
+        [
+          {
+            "node": "IF.EVENT_FOUND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.EVENT_FOUND": {
+      "main": [
+        [
+          {
+            "node": "IF.HAS_PHOTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.HAS_PHOTO": {
+      "main": [
+        [
+          {
+            "node": "IF.COORDS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.COORDS": {
+      "main": [
+        [
+          {
+            "node": "SET.S1_DEFAULTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET.S1_DEFAULTS": {
+      "main": [
+        [
+          {
+            "node": "CODE.S1_WINDOW_AND_AOI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.S1_WINDOW_AND_AOI": {
+      "main": [
+        [
+          {
+            "node": "Get token sentinel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get token sentinel": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "HTTP.S1_PROCESS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP.S1_PROCESS": {
+      "main": [
+        [
+          {
+            "node": "PG.GET_TG_POST1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.GET_TG_POST1": {
+      "main": [
+        [
+          {
+            "node": "PG.GET_CHANNEL_FROM_SETTINGS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.GET_CHANNEL_FROM_SETTINGS1": {
+      "main": [
+        [
+          {
+            "node": "CODE.TG_SEND_PAYLOAD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.TG_SEND_PAYLOAD": {
+      "main": [
+        [
+          {
+            "node": "Send a document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a document": {
+      "main": [
+        [
+          {
+            "node": "CODE.EXTRACT_TG_IDS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.EXTRACT_TG_IDS": {
+      "main": [
+        [
+          {
+            "node": "PG.SAVE_TG_MEDIA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.SAVE_TG_MEDIA": {
+      "main": [
+        [
+          {
+            "node": "PG.SAVE_TG_MEDIA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.SAVE_TG_MEDIA1": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "889f8be0-439f-487e-9407-1912f05d79e7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "5SbvSp9peySgrnVN",
+  "tags": [
+    {
+      "updatedAt": "2025-11-23T13:11:38.285Z",
+      "createdAt": "2025-11-23T13:11:38.285Z",
+      "id": "MjkrKVUMVRrVnT5U",
+      "name": "nafta2"
+    }
+  ]
+}
