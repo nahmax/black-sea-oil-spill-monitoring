@@ -1,5 +1,3 @@
-# Black Sea Oil Spill Monitoring System
-
 <!-- portfolio:start
 {
   "title": "Black Sea Oil Spill Monitoring",
@@ -13,6 +11,8 @@
   "screenshots": []
 }
 portfolio:end -->
+
+# Black Sea Oil Spill Monitoring System
 
 An n8n-based monitoring platform for oil and fuel spill incidents in the Black Sea and Azov Sea region.
 
