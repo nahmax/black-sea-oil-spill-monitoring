@@ -1,5 +1,19 @@
 # Black Sea Oil Spill Monitoring System
 
+<!-- portfolio:start
+{
+  "title": "Black Sea Oil Spill Monitoring",
+  "summary": "An n8n automation stack for monitoring Black Sea oil spill incidents with news search, PostgreSQL, Sentinel-1 imagery, AI detection, and Telegram publishing.",
+  "domains": ["Automation", "AI", "Geospatial Monitoring", "Data Systems"],
+  "stack": ["n8n", "PostgreSQL", "pgvector", "Sentinel Hub", "OpenAI", "Telegram Bot", "Docker"],
+  "featured": true,
+  "order": 1,
+  "year": "2026",
+  "status": "Public repo",
+  "screenshots": []
+}
+portfolio:end -->
+
 An n8n-based monitoring platform for oil and fuel spill incidents in the Black Sea and Azov Sea region.
 
 The repository contains exported n8n workflows, the PostgreSQL schema, and a local Docker setup that makes it easier to run the project as a portfolio-grade automation stack.
