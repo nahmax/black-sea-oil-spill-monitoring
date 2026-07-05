@@ -1,0 +1,542 @@
+{
+  "name": "WF_EVENT_DET_AGENT",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "event_id",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        144
+      ],
+      "id": "d726c33d-6e17-45d3-ab41-c455e64af219",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        448,
+        336
+      ],
+      "id": "b8534bd2-fa9b-4b76-b8cb-aefe0be749ff",
+      "name": "When clicking ‘Execute workflow’",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst event_id = 79\n\n\nreturn [\n  {\n    json: {\n      event_id\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        336
+      ],
+      "id": "a1d7c975-3c83-4140-8766-2856fe182371",
+      "name": "Code in JavaScript",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT\n  e.id,\n  e.src_title,\n  e.src_url,\n  e.short_summary,\n  e.src_published_at,\n  e.event_date,\n  e.verdict,\n  e.confidence,\n  e.has_photo\nFROM public.events e\nWHERE e.id = {{ Number(($json.event_id || '').toString()) }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        336
+      ],
+      "id": "01142c7b-6fe2-4822-8aa3-a2f215898c05",
+      "name": "PG.DET.SELECT_EVENT",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "120d6c8e-c180-4380-be3b-10c8a6729277",
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1312,
+        336
+      ],
+      "id": "1c990174-77fb-4489-aa44-0abac4a4dc5e",
+      "name": "IF.EVENT_FOUND"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0c4c7a08-1f4d-49da-b3cd-3be7711c4cad",
+              "leftValue": "={{$json.has_photo}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        336
+      ],
+      "id": "1bdb91b0-0943-4a39-8235-af8ea697c54c",
+      "name": "IF.HAS_PHOTO"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT\n  tm.file_id,\n  tm.kind,\n  tm.message_id\nFROM public.tg_media tm\nWHERE tm.event_id = {{ $json.id }}\nORDER BY tm.message_id DESC\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1840,
+        336
+      ],
+      "id": "89bf64c1-1cf8-4b00-b48a-0c02b4853db7",
+      "name": "PG.DET.GET_TG_MEDIA",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "29bd2270-067c-4549-8a3e-6282b1868fd8",
+              "leftValue": "={{ $json.verdict && $json.verdict !== 'unknown' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        336
+      ],
+      "id": "b9aac281-76f5-4aae-8b85-7886ab0abab8",
+      "name": "IF.DET_HAS_VERDICT"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "33795b1b-343d-4c80-8906-f6b9797d7ec7",
+              "leftValue": "={{$json.file_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2048,
+        336
+      ],
+      "id": "55585700-fc68-49e7-9e19-a9be37a55ac0",
+      "name": "IF.DET_HAS_FILE"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2304,
+        336
+      ],
+      "id": "ddfd2a01-cb9d-462c-8fff-9b7a920f515b",
+      "name": "Get a file",
+      "webhookId": "fb733cdc-eabc-45ee-a544-aa10fb2a4e91",
+      "credentials": {
+        "telegramApi": {
+          "id": "jGHuJWHL0BF66J4y",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nconst binKeys = Object.keys(item.binary || {});\nif (!binKeys.length) {\n  throw new Error('Нема бінарних даних для LLM');\n}\nconst key = binKeys[0];\nconst src = item.binary[key];\n\n\nlet fileName = src.fileName || 's1.png';\nfileName = fileName.replace(/\\.[^.]+$/, '.png');\n\n\nitem.binary.data = {\n  ...src,\n  fileName,\n  fileExtension: 'png',\n  mimeType: 'image/png',\n};\n\n\nif (key !== 'data') {\n  delete item.binary[key];\n}\n\nreturn [item];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2528,
+        336
+      ],
+      "id": "9d364079-e7b6-4a55-bec1-fcad8f6e44b3",
+      "name": "BIN.DET.RENAME_TO_DATA"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "chatgpt-4o-latest",
+          "mode": "list",
+          "cachedResultName": "CHATGPT-4O-LATEST"
+        },
+        "text": "You are a marine SAR / satellite image analyst.\n\nYou get Sentinel-1 (or similar) grayscale image over the sea.\nYour task is to detect if there is an oil spill on the sea surface.\n\nReturn STRICT JSON only, no explanations, with this shape:\n\n{\n  \"verdict\": \"spill\" | \"no_spill\" | \"uncertain\",\n  \"confidence\": 0.0-1.0,\n  \"notes\": \"short explanation in Ukrainian\"\n}",
+        "inputType": "base64",
+        "options": {
+          "maxTokens": 200
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2752,
+        336
+      ],
+      "id": "151185c6-d0e4-41cd-babc-fbb5a762e285",
+      "name": "LLM.DET.OPENAI_VISION",
+      "credentials": {
+        "openAiApi": {
+          "id": "PfeWoQmbI2fRBGH2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nlet raw = item.content || item.message?.content || '';\n\nraw = String(raw || '');\n\nfunction extractJSON(str) {\n  const fence = /```json\\s*([\\s\\S]*?)\\s*```/i;\n  const m = str.match(fence);\n  if (m && m[1]) return m[1];\n  const brace = /{[\\s\\S]*}/m;\n  const m2 = str.match(brace);\n  return m2 ? m2[0] : null;\n}\n\nlet obj = {};\ntry {\n  const jsonPart = extractJSON(raw) || raw;\n  obj = JSON.parse(jsonPart);\n} catch (e) {\n  return [{\n    json: {\n      ev_id: $items('PG.DET.SELECT_EVENT')[0].json.id,\n      parse_error: String(e),\n      raw_content: raw\n    }\n  }];\n}\n\nfunction clamp01(x) {\n  const n = Number(x);\n  if (!Number.isFinite(n)) return null;\n  return Math.min(1, Math.max(0, n));\n}\n\n\nconst vRaw = String(obj.verdict || '').toLowerCase();\nlet verdict;\nif (['spill','oil_spill','positive'].includes(vRaw)) verdict = 'spill';\nelse if (['no_spill','negative','clean'].includes(vRaw)) verdict = 'skip';\nelse verdict = 'unknown';\n\nconst confidence = clamp01(obj.confidence);\n\nconst is_oil_black_sea =\n  verdict === 'spill' ? true :\n  verdict === 'skip'  ? false :\n  null;\n\nreturn [{\n  json: {\n    ev_id: $items('PG.DET.SELECT_EVENT')[0].json.id,\n    verdict,\n    confidence,\n    is_oil_black_sea,\n    notes: obj.notes || null,\n    raw_json: obj\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        336
+      ],
+      "id": "62cd5183-bde6-49c4-8989-394280fa4a14",
+      "name": "CODE.DET.PARSE_JSON"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.events\nSET\n  verdict    = '{{ $json.verdict }}',      -- 'spill' | 'skip' | 'unknown'\n  confidence = {{ $json.confidence != null ? $json.confidence : 'NULL' }},\n  is_oil_black_sea = {{ $json.is_oil_black_sea === null\n                         ? 'NULL'\n                         : ($json.is_oil_black_sea ? 'TRUE' : 'FALSE') }},\n  llm_extract = COALESCE(llm_extract, '{}'::jsonb)\n                || '{{ $json.raw_json ? JSON.stringify($json.raw_json) : \"{}\" }}'::jsonb,\n  llm_version = 'gpt-4.0-mini-vision'\nWHERE id = {{ $json.ev_id }};\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3184,
+        336
+      ],
+      "id": "45fc8d03-c059-42ae-a5e9-4e6cb3d911b0",
+      "name": "PG.DET.UPDATE_EVENT",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.evidence(event_id, evidence_type, provider, url, snippet)\nVALUES (\n  {{ $node[\"CODE.DET.PARSE_JSON\"].json.ev_id }},\n  'satellite',\n  'openai:gpt-4.1-mini',\n  NULL,\n  {{ $node[\"CODE.DET.PARSE_JSON\"].json.notes\n       ? \"'\" + $node[\"CODE.DET.PARSE_JSON\"].json.notes.replace(/'/g, \"''\") + \"'\"\n       : 'NULL'\n  }}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3392,
+        336
+      ],
+      "id": "7f389b22-ce28-4a04-ba20-b08d011b7ed2",
+      "name": "PG.DET.INSERT_EVIDENCE",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const det = $items('CODE.DET.PARSE_JSON')[0].json;\n\nreturn [{\n  json: {\n    event_id: det.event_id,\n    verdict: det.verdict,\n    confidence: det.confidence,\n    notes_uk: det.notes_uk\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        336
+      ],
+      "id": "4f0963f3-110a-411d-8eab-134976973a68",
+      "name": "WRAP_RESULT"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "PG.DET.SELECT_EVENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.DET.SELECT_EVENT": {
+      "main": [
+        [
+          {
+            "node": "IF.DET_HAS_VERDICT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.EVENT_FOUND": {
+      "main": [
+        [
+          {
+            "node": "IF.HAS_PHOTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.HAS_PHOTO": {
+      "main": [
+        [
+          {
+            "node": "PG.DET.GET_TG_MEDIA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.DET_HAS_VERDICT": {
+      "main": [
+        [
+          {
+            "node": "IF.EVENT_FOUND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.DET.GET_TG_MEDIA": {
+      "main": [
+        [
+          {
+            "node": "IF.DET_HAS_FILE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.DET_HAS_FILE": {
+      "main": [
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "BIN.DET.RENAME_TO_DATA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BIN.DET.RENAME_TO_DATA": {
+      "main": [
+        [
+          {
+            "node": "LLM.DET.OPENAI_VISION",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM.DET.OPENAI_VISION": {
+      "main": [
+        [
+          {
+            "node": "CODE.DET.PARSE_JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.DET.UPDATE_EVENT": {
+      "main": [
+        [
+          {
+            "node": "PG.DET.INSERT_EVIDENCE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.DET.PARSE_JSON": {
+      "main": [
+        [
+          {
+            "node": "PG.DET.UPDATE_EVENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.DET.INSERT_EVIDENCE": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "PG.DET.SELECT_EVENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a1e6706e-8a55-4b63-8b3c-2bb7214d03fc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "8L7YUHX1lOfmwcY3",
+  "tags": []
+}

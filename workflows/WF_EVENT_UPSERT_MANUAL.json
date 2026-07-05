@@ -1,0 +1,90 @@
+{
+  "name": "WF_EVENT_UPSERT_MANUAL",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "src_title" },
+            { "name": "src_url" },
+            { "name": "event_date", "type": "any" },
+            { "name": "short_summary" },
+            { "name": "lat", "type": "any" },
+            { "name": "lon", "type": "any" },
+            { "name": "notes", "type": "any" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "a653cd6d-48dc-4464-aec9-5845da954507",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.events (\n  src_title,\n  src_url,\n  src_source,\n  src_lang,\n  src_published_at,\n  event_date,\n  short_summary,\n  lat,\n  lon,\n  is_oil_black_sea,\n  llm_extract,\n  hash\n)\nVALUES (\n  '{{ ($json.src_title || \"\").replace(/'/g, \"''\") }}',\n  '{{ ($json.src_url || \"\").replace(/'/g, \"''\") }}',\n  'manual',\n  'uk',\n  NOW(),\n  ({{ $json.event_date ? \"'\" + $json.event_date + \"'\" : 'NULL' }})::date,\n  NULLIF('{{ ($json.short_summary || \"\").replace(/'/g, \"''\") }}',''),\n  {{ $json.lat ? $json.lat : 'NULL' }},\n  {{ $json.lon ? $json.lon : 'NULL' }},\n  true,\n  jsonb_build_object(\n    'manual', true,\n    'notes', NULLIF('{{ ($json.notes || \"\").replace(/'/g, \"''\") }}','')\n  ),\n  public.compute_event_hash(\n    '{{ ($json.src_url   || \"\").replace(/'/g, \"''\") }}',\n    '{{ ($json.src_title || \"\").replace(/'/g, \"''\") }}',\n    NULLIF('{{ ($json.event_date || \"\").replace(/'/g, \"''\") }}','')::date::timestamptz\n  )\n)\nON CONFLICT (hash) DO UPDATE\nSET\n  short_summary = COALESCE(EXCLUDED.short_summary, public.events.short_summary),\n  lat           = COALESCE(EXCLUDED.lat, public.events.lat),\n  lon           = COALESCE(EXCLUDED.lon, public.events.lon),\n  llm_extract   = public.events.llm_extract || EXCLUDED.llm_extract\nRETURNING\n  id,\n  src_title,\n  src_url,\n  src_published_at,\n  event_date,\n  short_summary,\n  lat,\n  lon;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        48,
+        192
+      ],
+      "id": "e2b15017-8437-47d5-b6bd-5e611cc9ccf3",
+      "name": "PG.UPSERT_MANUAL",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nreturn [{\n  json: {\n    events: rows,\n    message: rows.length\n      ? 'Updated ' + rows.length + ' event(s) in the database.'\n      : 'No database changes were made.'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        192
+      ],
+      "id": "7804e711-556c-4b8e-abd1-45ed09fd92df",
+      "name": "WRAP_RESULT"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "PG.UPSERT_MANUAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.UPSERT_MANUAL": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

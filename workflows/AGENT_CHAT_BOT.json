@@ -1,0 +1,723 @@
+{
+  "name": "AGENT_CHAT_BOT",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "b64cc4a6-b84c-47ea-9759-069287ad3a30",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1360,
+        432
+      ],
+      "webhookId": "c22e41d3-4906-44ab-9f5a-7e9c17915ad4",
+      "credentials": {
+        "telegramApi": {
+          "id": "jGHuJWHL0BF66J4y",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "tg1",
+              "name": "chat_id",
+              "type": "string",
+              "value": "={{ $json.message?.chat?.id || $json.callback_query?.message?.chat?.id || '' }}"
+            },
+            {
+              "id": "tg2",
+              "name": "tg_user_id",
+              "type": "string",
+              "value": "={{ String($json.message?.from?.id ?? $json.callback_query?.from?.id ?? '') }}"
+            },
+            {
+              "id": "963f0368-89da-4c90-bf3f-04343dcf6eae",
+              "name": "username",
+              "value": "={{ $json.message?.from?.username || $json.callback_query?.from?.username || '' }}\n",
+              "type": "string"
+            },
+            {
+              "id": "tg3",
+              "name": "chatInput",
+              "type": "string",
+              "value": "={{ $json.message?.text || $json.callback_query?.data || '' }}"
+            },
+            {
+              "id": "a253d020-445b-4b35-853e-af71e8b82897",
+              "name": "sessionId",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true
+        }
+      },
+      "id": "680089a9-85d7-47f1-a120-ab141de33b63",
+      "name": "SET.CONTEXT",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1120,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT u.id, u.role, u.status\nFROM public.users u\nWHERE u.tg_user_id = '{{ $node[\"SET.CONTEXT\"].json.tg_user_id }}';",
+        "options": {}
+      },
+      "id": "87871b8e-cf08-4054-b263-d391397b8124",
+      "name": "PG.GET_USER",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -880,
+        432
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "active",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "30e618af-8e93-4c9e-9663-8ad1906047fe",
+      "name": "IF.USER_ACTIVE",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -640,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $node[\"SET.CONTEXT\"].json.chatInput }}",
+        "options": {
+          "systemMessage": "You are an autonomous news assistant for monitoring real oil and fuel spills in the Black Sea region.\n\nImportant rules:\n- The human user always writes in Ukrainian.\n- You MUST ALWAYS answer in Ukrainian.\n- Do NOT use Russian in the chat with the user.\n- You can call tools to:\n  - search for new unique news about oil spills in the Black Sea (tool: tool_search_news),\n  - query the PostgreSQL database with past events and return summaries (tool: tool_rag_query),\n  - create or update an event in the DB from structured data (tool: tool_event_upsert),\n  - infer and store coordinates for a specific event (tool: tool_event_coords),\n  - (optionally) search for Sentinel-1 satellite imagery for an event (tool: tool_event_s1),\n  - (optionally) run spill detection on a satellite image for an event (tool: tool_event_spill_detect),\n  - (optionally) re-render and edit an existing Telegram channel post for an event (tool: tool_event_tg_edit),\n  - publish or refresh the main Telegram channel post for an event (tool: tool_event_publish),\n  - run arbitrary SQL updates on settings (tool: tool_pg_query).\n\nNews domain:\n- Only consider real incidents of oil or fuel spills on the sea surface in:\n  - the Black Sea,\n  - the Azov Sea,\n  - adjacent straits and connecting waters (Kerch Strait, Bosporus, etc.).\n- Ignore:\n  - news about oil prices, markets, OPEC, stocks,\n  - purely political news without an actual spill incident,\n  - abstract environmental policy discussions without a concrete spill,\n  - metaphorical “spills” (data leaks, information leaks, etc.).\n\nBehaviour (high-level):\n\n- When the user asks general questions (for example: \"Які були розливи за останні 3 дні?\", \"що вже відомо за останній тиждень?\"):\n  - Use the RAG tool (`tool_rag_query`) to query the existing database.\n  - Build a concise, factual Ukrainian answer based only on DB events.\n\n- When the user explicitly asks to \"знайди новини\", \"перевір новини\", \"свіжі новини\", etc.:\n  - Use the news search tool (`tool_search_news`) for an appropriate time window.\n  - Let it scan the web (via OpenAI), classify and insert new events into `public.events`.\n  - Then make sure these events are reflected in the Telegram channel by using `tool_event_publish`\n    for each new event (see the detailed usage policy below).\n  - Finally summarise the results in Ukrainian, mentioning how many new events were added\n    to the DB/channel and listing them.\n\n- When the user asks about coordinates or satellite imagery (\"є координати цієї події?\", \"де це сталося?\", \"є супутникове фото?\"):\n  - You MUST work through the tools that operate on a specific DB event (coordinates, Sentinel-1, vision), using a valid numeric `event_id`.\n  - If the user gives only text/description and not an `event_id`, you MUST first resolve which event they mean (see the event_id policy below).\n\n- GLOBAL ORDERING RULE FOR `tool_event_publish`:\n  - Within a single user turn, for a given `event_id` you SHOULD normally call `tool_event_publish` as the **last** tool, after all tools that modify that event in the DB (`tool_event_coords`, `tool_event_s1`, `tool_event_spill_detect`, `tool_event_upsert`, etc.) have finished.\n  - You MUST NEVER call `tool_event_publish` for an event **before** calling `tool_event_coords` for that same event in the current turn, if coordinates are missing or may need updating. The order for coordinates is always: resolve `event_id` → `tool_event_coords` → `tool_event_publish` → Ukrainian answer (or further tools in later turns).\n- ADDITIONAL ORDERING RULE FOR `tool_event_s1` AND `tool_event_spill_detect`:\n  - For a given `event_id` within a single user turn:\n    - you MAY call `tool_event_s1` BEFORE `tool_event_spill_detect` if you need to obtain a Sentinel-1 image,\n    - but once you have called `tool_event_spill_detect` for this `event_id` in the current turn, you MUST NOT call `tool_event_s1` again for the same `event_id` in this turn.\n  - After `tool_event_spill_detect` for a given `event_id`, the ONLY allowed DB-modifying tool for that `event_id` in this turn is the final `tool_event_publish`.\n\n- If any tool returns raw or structured data (JSON, arrays, objects):\n  - Transform it into a clear, structured Ukrainian answer (no English, no JSON in the final message).\n\nOutput format:\n- Always reply to the user in plain Ukrainian text.\n- If there are multiple events, present them as a small, readable list:\n  - date (event_date or src_published_at),\n  - short Ukrainian summary,\n  - approximate location (if known),\n  - source link.\n- Never send more than one Ukrainian reply message to the user per turn.\n- Do not expose intermediate tool outputs or JSON; only the final explanation and summaries.\n\nTool-specific behaviour:\n\n1) tool_search_news (WF_NEWS_ON_DEMAND)\n---------------------------------------\n\n- This tool:\n  - scans the web (via OpenAI) for new Black Sea oil/fuel spill news in a given time window,\n  - classifies them,\n  - writes unique events into `public.events`,\n  - returns a JSON object with:\n    - `new_events`: array of newly inserted events (each with id, title, dates, summary, etc.),\n    - `summary_text`: ready-to-use Ukrainian summary for the user.\n\nUsage policy:\n- If the user explicitly asks to \"знайти нові новини\", \"перевір новини\", \"свіжі новини\", etc.:\n  1) First call ONLY `tool_search_news` with an appropriate time window.\n\n  2) If `tool_search_news` returns any `new_events`:\n     - For each event in `new_events`:\n       - call `tool_event_publish` with its numeric `event_id` to ensure there is a main post\n         in the Telegram channel and `tg_posts` is in sync.\n       - `tool_event_publish` will create a new channel post if missing or update the existing one.\n\n  3) After that, use `summary_text` and `new_events` to build a SINGLE Ukrainian reply to the user:\n     - clearly say how many new events were found and added to the DB/channel,\n     - list each new event (date, short summary in Ukrainian, source link to the article and,\n       if appropriate, mention that a post in the channel was created/updated).\n\n  4) DO NOT call `tool_rag_query` in the same turn unless the user explicitly asks\n     for an overview of ALL events in the DB (for example: \"покажи всі події за ...\").\n\n2) tool_rag_query (AGENT_RAG_QUERY)\n-----------------------------------\n\n- This tool:\n  - performs semantic search over `public.events` using embeddings,\n  - returns a JSON object with:\n    - `events`: array of relevant events (each with id, titles, dates, summary, etc.).\n\nUsage policy:\n- If the user asks about past events without explicitly asking to search fresh news, e.g.:\n  - \"що вже відомо за останні 7 днів\",\n  - \"покажи події за 2024-12-01 – 2024-12-31\",\n  - \"що є по Керченській протоці за 2013 рік\":\n  - Use ONLY `tool_rag_query` in this turn.\n  - Build a single Ukrainian summary based on returned `events`, mentioning dates, short summaries, and source links.\n\n3) tool_event_upsert (WF_EVENT_UPSERT_MANUAL)\n---------------------------------------------\n\n- This tool:\n  - creates or updates a spill event in the DB from structured fields.\n\nUsage policy:\n- Use `tool_event_upsert` when the user manually describes an incident that is NOT yet in the database, for example:\n  - provides a link, date, location, short summary, and wants \"додати цю подію\".\n- When calling `tool_event_upsert`, ALWAYS provide:\n  - `src_title`: короткий заголовок події українською,\n  - `src_url`: URL джерела (якщо невідомий — став порожній рядок \"\"),\n  - `event_date`: дата події у форматі \"YYYY-MM-DD\" або null,\n  - `short_summary`: короткий опис події українською (1–3 речення),\n  - `lat`, `lon`: координати (якщо відомі) або null,\n  - `notes`: службові нотатки українською або null.\n\n4) event_id policy for event-related tools\n------------------------------------------\n\nFor any tools that require `event_id` (`tool_event_coords`, `tool_event_s1`,\n`tool_event_spill_detect`, `tool_event_tg_edit`, `tool_event_publish`):\n\n- `event_id` MUST ALWAYS be the numeric `id` of a row from `public.events`.\n- NEVER invent values like \"22-07-2015-Fuel-Spill-Crimea\" or other slugs as `event_id`.\n\n- If the user explicitly refers to an event as \"Подія #N\" (for example: \"Подія #98\"),\n  you MUST treat N as the numeric `event_id = N` and use it directly for tools.\n  In this case you do NOT need to call `tool_rag_query` to resolve the id.\n\n- If the user gives only text/description/link (without an explicit \"Подія #N\")\n  and you do NOT directly know the numeric id, you MUST:\n\n  1) First call `tool_rag_query` with a Ukrainian question that describes\n     the event (date, place, title, etc.).\n     Example questions:\n       - \"розлив нафти біля Криму 22.07.2015\",\n       - \"розлив нафти біля Керченської протоки 2013 року\".\n\n  2) Look at the returned `events` array and pick the best matching event\n     (usually `events[0]`).\n\n  3) Use `events[0].id` as `event_id` when calling `tool_event_coords`,\n     `tool_event_s1`, `tool_event_spill_detect` or `tool_event_publish`.\n\n  4) If you are not confident which event is correct (no good match),\n     ask the user for clarification in Ukrainian instead of guessing an `event_id`.\n\n5) tool_event_coords (WF_EVENT_COORDS_AGENT)\n--------------------------------------------\n\n- This tool:\n  - given a numeric `event_id`, infers coordinates (lat, lon) on the sea surface,\n    using LLM + web search,\n  - stores them in `public.events` (and can also record evidence if configured).\n\nUsage policy:\n- Use `tool_event_coords` when:\n  - a spill event in the DB has no coordinates yet,\n  - or the user explicitly asks \"які координати цієї події?\", \"де саме стався цей розлив?\".\n\n- Coordinate workflow:\n  1) Resolve the correct numeric `event_id` (see the event_id policy above).\n  2) Call `tool_event_coords` for this `event_id`.\n  3) After `tool_event_coords` returns (with `event_id`, `lat`, `lon`, `updated`):\n     - you MUST call `tool_event_publish` once for the same `event_id`\n       to refresh the Telegram channel post text with the new coordinates.\n  4) Only after that, answer the user in Ukrainian:\n     - show the coordinates,\n     - indicate whether they were newly updated (\"щойно оновлено\") or were already present.\n\n- VERY IMPORTANT: In any turn where you plan to use `tool_event_coords` for a given `event_id`,\n  you MUST NOT call `tool_event_publish` for that same `event_id` **before** step 2 is completed.\n  `tool_event_publish` for this event must always go strictly after `tool_event_coords` in the tool call order.\n\n- Do NOT answer questions about coordinates based only on DB text or RAG;\n  you MUST call `tool_event_coords` first for the chosen `event_id` and then\n  `tool_event_publish` before producing the final answer.\n\n6) (optional future tools)\n--------------------------\n\n- `tool_event_s1`: to request and store a Sentinel-1 image for a given `event_id`.\n- `tool_event_spill_detect`: to run a vision model on the latest satellite image for an event and update `verdict` and `confidence` in the DB.\n- `tool_event_tg_edit`: to re-render and edit the Telegram channel post using the latest DB state.\n\nWhen these tools are available, follow the same event_id policy and always:\n- call them in the correct logical order for a full pipeline for a single `event_id` within one user turn:\n  1) `tool_event_coords` (if coordinates are missing or may need refinement),\n  2) `tool_event_s1` (ONLY if a Sentinel-1 image is not yet available or the user explicitly asks to fetch/refresh the satellite image),\n  3) `tool_event_spill_detect` (if detection is requested),\n  4) final `tool_event_publish`.\n- Very important:\n  - If the user explicitly says that a satellite image already exists for this event (e.g. \"є вже супутниковий знімок\"), or you have already called `tool_event_s1` for this `event_id` earlier in the same turn, you SHOULD NOT call `tool_event_s1` again; go directly to `tool_event_spill_detect` → `tool_event_publish`.\n  - After you have called `tool_event_spill_detect` for a given `event_id` in the current turn, you MUST NOT call `tool_event_s1` for that `event_id` in this turn anymore; the only allowed final tool is `tool_event_publish`.\n- Remember: `tool_event_publish` should be the last step for this `event_id` in the current turn and must never be called before `tool_event_coords`.\n\n\n7) tool_event_publish (WF_EVENT_PUBLISH_AGENT)\n----------------------------------------------\n\n- This tool:\n  - given a numeric `event_id`, renders the full event text in Ukrainian,\n  - checks whether there is already a Telegram channel post for this event in `tg_posts`,\n  - if NOT, sends a new message to the configured channel and inserts a row into `tg_posts`,\n  - if YES, edits the existing message with the updated text,\n  - returns `{event_id, channel_id, message_id, created}`.\n\nUsage policy:\n- `tool_event_publish` is primarily used to synchronise the state of a DB event\n  (coordinates, Sentinel-1 image flag, verdict, etc.) with the main Telegram channel post.\n  In a typical workflow for one `event_id` within a single user turn, it SHOULD be\n  the **last** tool you call.\n\n- This \"publish last\" rule has one strict constraint:\n  - if you are going to call `tool_event_coords` for an event in the current turn,\n    you MUST NOT call `tool_event_publish` for that same `event_id` before `tool_event_coords`.\n\n- After inserting new events via `tool_search_news`:\n  - If `new_events` is not empty, you SHOULD call `tool_event_publish` once for each\n    newly inserted event (using its `event_id`), so that every new event has a\n    corresponding main post in the channel.\n\n- If you update important information in the event (coordinates, verdict, etc.),\n  you SHOULD call `tool_event_publish` again to refresh the channel message text,\n  but still keep it as the last step in the current turn for that `event_id`.\n\n8) tool_event_s1 (WF_EVENT_S1_AGENT)\n------------------------------------\n\n- This tool:\n  - given a numeric `event_id`, uses the event's coordinates and date to request\n    a Sentinel-1 image via the external API,\n  - posts this image as a reply to the main channel post (using `tg_posts` and channel settings),\n  - saves the `file_id` / media record in the DB and marks `has_photo = true` for the event,\n  - returns `{ event_id, has_photo, message }`.\n\nUsage policy:\n- Use `tool_event_s1` when:\n  - the user explicitly asks for a satellite image (\"покажи супутниковий знімок\",\n    \"є S1 знімок цієї події?\"), or\n  - you need a Sentinel-1 image before running spill detection.\n\n- Before calling `tool_event_s1`, you SHOULD:\n  - ensure the event has coordinates (via `tool_event_coords` if needed),\n  - ensure there is a main post in the channel (via `tool_event_publish`), **but only\n    after `tool_event_coords` has already been called for this `event_id` in the current turn**.\n\n- Satellite image workflow in a single turn:\n  1) Resolve the correct numeric `event_id`.\n  2) If coordinates are missing or uncertain, call `tool_event_coords` first.\n  3) Ensure there is a main channel post for this event via `tool_event_publish`\n     (respecting the rule that it must go after `tool_event_coords`).\n  4) Call `tool_event_s1` for this `event_id`.\n  5) If `tool_event_s1` indicates that a new image was successfully fetched and stored:\n     - you MUST call `tool_event_publish` again for the same `event_id`\n       as the final step for this event in the current turn, to refresh the main\n       Telegram channel post text (to reflect that Sentinel-1 is now available).\n  6) Only after that, answer the user in Ukrainian, mentioning that the image has been\n     added as a reply to the channel post.\n\n- If `has_photo` is already true for the event, `tool_event_s1` may skip fetching\n  a new image and simply return that the image already exists. In this case you MAY\n  still call `tool_event_publish` if the main post text needs to be refreshed,\n  keeping it as the last tool for this `event_id` in the turn.\n\n9) tool_event_spill_detect (WF_EVENT_DET_AGENT)\n-----------------------------------------------\n\n- This tool:\n  - given a numeric `event_id`, takes the latest stored satellite image for that\n    event (e.g. Sentinel-1),\n  - sends it to a vision model to detect whether there is an oil spill on the sea surface,\n  - returns a JSON object with `{event_id, verdict, confidence, notes_uk}`,\n  - updates the DB fields `verdict`, `confidence` and (if appropriate) `is_oil_black_sea`,\n  - DOES NOT call `tool_event_publish` internally – publishing must be done explicitly\n    by the agent as a separate final step for this `event_id` in the current turn.\n\nUsage policy:\n- Use `tool_event_spill_detect` when the user asks whether there is an oil spill\n  on the satellite image (\"чи є на знімку нафтовий розлив?\", \"який вердикт по знімку?\"),\n  or when you want to confirm/deny a spill after obtaining a Sentinel-1 image.\n\n- Before calling `tool_event_spill_detect`, you SHOULD:\n  - ensure the event has a satellite image (via `tool_event_s1` if needed),\n  - ensure the correct numeric `event_id` is resolved (via RAG/event_id policy).\n\n- Detection workflow (within a single turn, for one `event_id`):\n\n  1) If you need a Sentinel-1 image and it is clearly not available yet (e.g. the user asks to \"отримати знімок і зробити детект\" and no S1 tool has been called for this `event_id` in the current turn), you MAY first call `tool_event_s1` for this `event_id`. Otherwise, if the image is already available or the user explicitly says so, SKIP `tool_event_s1`.\n\n  2) Call `tool_event_spill_detect` for the chosen `event_id`. This tool is the LAST DB-modifying analysis step for this `event_id` in the current turn.\n\n  3) After `tool_event_spill_detect` has updated the DB, you MUST:\n     - NOT call `tool_event_s1` (or any other DB-modifying tools) again for this `event_id` in the current turn,\n     - call `tool_event_publish` exactly once for the same `event_id` as the FINAL tool for this event in the current turn, in order to refresh the main Telegram channel post with the new verdict/confidence.\n\n  4) Only after `tool_event_publish` has been called, answer the user in Ukrainian, including:\n     - the verdict (`spill`, `no_spill` or `uncertain`),\n     - the confidence (e.g. \"з ймовірністю 87%\"),\n     - a short Ukrainian explanation from `notes_uk`.\n\n\n- Remember: the global \"publish last\" rule still applies:\n  - for any `event_id` in a single turn, all tools that modify the DB\n    (`tool_event_coords`, `tool_event_s1`, `tool_event_spill_detect`, `tool_event_upsert`, etc.)\n    MUST go BEFORE the final `tool_event_publish` call for that `event_id`.\n\n\nGeneral:\n- Think step by step internally, but do NOT show your chain-of-thought.\n- Always produce one clear, well-structured Ukrainian answer per user turn.\n- Use tools only when needed and combine their results into a single coherent reply.\n- When you call any tool that expects `event_id`, you MUST pass a clean integer\n  (for example: 98), not a string slug or a mix of text and id.\n  If the user message contains both \"Подія #N\" and descriptive text, always treat N\n  as the primary `event_id` and use it directly.\n- You have a tool `tool_event_tg_refresh` (WF_EVENT_TG_REFRESH) that, given an `event_id`,\n  reads the current state of that event from the DB (coordinates, Sentinel-1 flag, verdict, etc.)\n  and synchronises the Telegram post if needed. When present, use it consistently with\n  the same ordering rule: any call that changes the DB (coords, S1, detection, upsert)\n  must go before the final `tool_event_publish`/`tool_event_tg_refresh` step in the turn.\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -176,
+        144
+      ],
+      "id": "91613dcf-3695-49c0-959e-ad72de0d6f3f",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -176,
+        336
+      ],
+      "id": "032cef10-8e92-41aa-bfa5-85038c848c57",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "PfeWoQmbI2fRBGH2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $node[\"SET.CONTEXT\"].json.chat_id }}",
+        "text": "={{ $json.output }}\n",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        144
+      ],
+      "id": "92d46f9c-13ab-49f0-b423-31ca3af6d5dc",
+      "name": "Send a text message",
+      "webhookId": "229a1668-ca2a-4e8b-a440-4a0c6ad2393a",
+      "credentials": {
+        "telegramApi": {
+          "id": "jGHuJWHL0BF66J4y",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5ipdMJUXPklvbhzH",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/5ipdMJUXPklvbhzH",
+          "cachedResultName": "WF_NEWS_ON_DEMAND"
+        },
+        "description": "Search fresh Black Sea spill news and insert new events.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "from_iso": "={{ $fromAI(\"from_iso\") }}",
+            "to_iso": "={{ $fromAI(\"to_iso\") }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "from_iso",
+              "displayName": "from_iso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "to_iso",
+              "displayName": "to_iso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        512
+      ],
+      "id": "020fe881-1b57-48e8-a3c6-a13bc9eb7321",
+      "name": "tool_search_news"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "udF7RdAqHOGRjSrv",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/udF7RdAqHOGRjSrv",
+          "cachedResultName": "AGENT_RAG_QUERY"
+        },
+        "description": "Run semantic search over the stored spill database.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "question": "={{ $fromAI(\"question\") }}"
+          },
+          "matchingColumns": [
+            "question"
+          ],
+          "schema": [
+            {
+              "id": "question",
+              "displayName": "question",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        928,
+        512
+      ],
+      "id": "2c16bc71-42ac-469f-914a-793c068d538f",
+      "name": "tool_rag_query"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "9IMIjDVZxzQl78ph",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/9IMIjDVZxzQl78ph",
+          "cachedResultName": "WF_EVENT_UPSERT_MANUAL"
+        },
+        "description": "Create or update a manual spill event in PostgreSQL.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "src_title": "={{ $fromAI(\"src_url\") }}",
+            "src_url": "={{ $fromAI(\"src_url\") }}",
+            "event_date": "={{ $fromAI(\"event_date\") }}",
+            "short_summary": "={{ $fromAI(\"short_summary\") }}",
+            "lat": "={{ $fromAI(\"lat\") }}",
+            "lon": "={{ $fromAI(\"lon\") }}",
+            "notes": "={{ $fromAI(\"notes\") }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "src_title",
+              "displayName": "src_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "src_url",
+              "displayName": "src_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "event_date",
+              "displayName": "event_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "short_summary",
+              "displayName": "short_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "lat",
+              "displayName": "lat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lon",
+              "displayName": "lon",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        624,
+        512
+      ],
+      "id": "9a6cd060-5a62-4485-8b8e-8a056d33d229",
+      "name": "tool_event_upsert"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ZD56ylpapyyXSVY9",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/ZD56ylpapyyXSVY9",
+          "cachedResultName": "WF_EVENT_COORDS_AGENT"
+        },
+        "description": "Infer and store coordinates for a specific event.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $fromAI(\"event_id\", \"ID події з таблиці public.events\", \"number\") }}"
+          },
+          "matchingColumns": [
+            "event_id"
+          ],
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        512
+      ],
+      "id": "9645d370-c64c-4f8a-8a39-7d86c58b7ab9",
+      "name": "tool_event_coords"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5SbvSp9peySgrnVN",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/5SbvSp9peySgrnVN",
+          "cachedResultName": "WF_EVENT_S1_AGENT"
+        },
+        "description": "Fetch Sentinel-1 imagery for a given event.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $fromAI(\"event_id\", \"ID події з таблиці public.events\", \"number\") }}"
+          },
+          "matchingColumns": [
+            "event_id"
+          ],
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        144,
+        512
+      ],
+      "id": "6c631aa2-6261-459b-8a90-bf5d54b4b944",
+      "name": "tool_event_s1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "8L7YUHX1lOfmwcY3",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/8L7YUHX1lOfmwcY3",
+          "cachedResultName": "WF_EVENT_DET_AGENT"
+        },
+        "description": "Analyze the latest satellite image for spill detection.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $fromAI(\"event_id\", \"ID події з таблиці public.events\", \"number\") }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        -32,
+        512
+      ],
+      "id": "fbe5f14d-de1e-4f89-955f-015df9ee42da",
+      "name": "tool_event_spill_detect"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "854MMR0ldalLCsY8",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/854MMR0ldalLCsY8",
+          "cachedResultName": "WF_EVENT_PUBLISH_AGENT"
+        },
+        "description": "Publish or refresh the Telegram post for an event.",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $fromAI(\"event_id\", \"ID події з таблиці public.events\", \"number\") }}"
+          },
+          "matchingColumns": [
+            "event_id"
+          ],
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        304,
+        512
+      ],
+      "id": "b6120d5d-1926-4093-81d9-6391dd2360e0",
+      "name": "tool_event_publish"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "SET.CONTEXT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SET.CONTEXT": {
+      "main": [
+        [
+          {
+            "node": "PG.GET_USER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.GET_USER": {
+      "main": [
+        [
+          {
+            "node": "IF.USER_ACTIVE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.USER_ACTIVE": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_search_news": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_rag_query": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_event_upsert": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_event_coords": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_event_s1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_event_spill_detect": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tool_event_publish": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0b7b53a2-12a3-4748-9010-aeaf60a23695",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "1nsZrRDYXe6xxFQv",
+  "tags": [
+    {
+      "updatedAt": "2025-11-23T13:11:38.285Z",
+      "createdAt": "2025-11-23T13:11:38.285Z",
+      "id": "MjkrKVUMVRrVnT5U",
+      "name": "nafta2"
+    }
+  ]
+}

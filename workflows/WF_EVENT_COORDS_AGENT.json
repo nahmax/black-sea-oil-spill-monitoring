@@ -1,0 +1,365 @@
+{
+  "name": "WF_EVENT_COORDS_AGENT",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "event_id",
+              "type": "any"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -576,
+        -192
+      ],
+      "id": "32ea3765-71f6-4c41-8476-c88f016b912b",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT e.id, e.src_url, e.src_title, e.short_summary,\n       e.src_published_at, e.event_date,\n       e.lat, e.lon, e.has_photo\nFROM public.events e\nWHERE e.id = {{ $json.event_id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -160,
+        0
+      ],
+      "id": "b1d3e317-2035-4994-a69d-d3956ee86c7b",
+      "name": "PG.SELECT_EVENT_S1",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b8816e36-c2a1-4430-8df3-35f6fffa8563",
+              "leftValue": "={{ $json.lat }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "72056f33-e7d5-4cd5-ad5c-446c41b223bb",
+              "leftValue": "={{ $json.lon }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        48,
+        0
+      ],
+      "id": "062b2d37-fead-4cf6-a2ab-9422316a9392",
+      "name": "IF.HAS_COORDS"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini-search-preview-2025-03-11",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI-SEARCH-PREVIEW-2025-03-11"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a marine incident geocoder.\n\nYour job:\n1) Read the article title/summary and use Web Search to confirm where THIS spill occurred.\n2) Prefer official/authoritative sources. If available, use NOAA IncidentNews pages.\n3) Return a point IN WATER (sea/strait/bay), not on land. If the article names a city/port, choose a point 1–3 km offshore of that place.\n4) Output only one JSON object wrapped in a fenced code block ```json ... ```.\n5) Latitude/longitude: WGS84 decimal degrees, 5 decimals.\n\nFields to output:\n{\n  \"canonical_place\": string,        // e.g. \"Kerch Strait, Black Sea\"\n  \"lat\": number,                    // 5 decimals, in water\n  \"lon\": number,                    // 5 decimals, in water\n  \"confidence\": number,             // 0..1\n  \"sources\": string[],              // 1-3 urls you actually used\n  \"notes\": string                   // short reasoning\n}",
+              "role": "system"
+            },
+            {
+              "content": "=Article title: {{ $json.src_title || '' }}\nSummary: {{ $json.short_summary || '' }}\nPublication date (UTC): {{ $json.src_published_at || '' }}\nSource URL: {{ $json.src_url || '' }}\n\nTask:\nFind the exact water body location (sea/strait/bay) where this spill occurred.\nUse web search; if possible, confirm against NOAA IncidentNews.\nReturn ONLY one JSON object in ```json ...``` as specified above."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 500
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        272,
+        -16
+      ],
+      "id": "445f9b1c-84c2-4422-a1ba-e8d9c8ff5b1a",
+      "name": "LLM.LOCATION_QUERY",
+      "credentials": {
+        "openAiApi": {
+          "id": "PfeWoQmbI2fRBGH2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nlet rawContent = item?.message?.content;\n\nif (!rawContent && item?.choices?.[0]?.message?.content) {\n  rawContent = item.choices[0].message.content;\n}\n\nrawContent = (rawContent || '').toString();\n\nfunction extractJSONBlock(str) {\n  if (!str) return null;\n\n  const fence = /```json\\s*([\\s\\S]*?)\\s*```/i;\n  const m = str.match(fence);\n  if (m && m[1]) return m[1];\n\n  const brace = /{[\\s\\S]*}/m;\n  const m2 = str.match(brace);\n  return m2 ? m2[0] : null;\n}\n\nlet obj = {};\ntry {\n  const jsonPart = extractJSONBlock(rawContent);\n  if (!jsonPart) {\n    throw new Error('No JSON block found in LLM content');\n  }\n  obj = JSON.parse(jsonPart);\n} catch (e) {\n  const baseEvent = $items('PG.SELECT_EVENT_S1')[0].json;\n  return [{\n    json: {\n      ev_id: baseEvent.id,\n      parse_error: String(e),\n      raw_content: rawContent\n    }\n  }];\n}\n\nfunction numOrNull(v) {\n  if (v === null || v === undefined) return null;\n  const n = Number(v);\n  return Number.isFinite(n) ? n : null;\n}\n\nlet lat = numOrNull(obj.lat);\nlet lon = numOrNull(obj.lon);\n\nif (lat !== null && (lat < -90 || lat > 90)) lat = null;\nif (lon !== null && (lon < -180 || lon > 180)) lon = null;\n\nconst fix5 = v => v === null ? null : Number(v.toFixed(5));\nlat = fix5(lat);\nlon = fix5(lon);\n\nconst baseEvent = $items('PG.SELECT_EVENT_S1')[0].json;\n\nreturn [{\n  json: {\n    ev_id: baseEvent.id,\n    canonical_place: obj.canonical_place ?? null,\n    lat,\n    lon,\n    confidence: obj.confidence ?? null,\n    notes: obj.notes ?? null,\n    evidence: Array.isArray(obj.sources) ? obj.sources.slice(0,5) : null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -16
+      ],
+      "id": "9164f724-d066-4f12-aa07-efbda0f7a3d1",
+      "name": "CODE.PARSE_LLM"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "30f85a0a-b65f-4116-affc-ac07840cc3b3",
+              "leftValue": "={{ $json.lat }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "765ee144-a8d2-4390-871b-779007683e9b",
+              "leftValue": "={{$json.lon}}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        832,
+        -16
+      ],
+      "id": "9f717f4f-72b8-4585-b2e7-ce758ddf2b0f",
+      "name": "IF.GOT_COORDS"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.events\nSET lat = {{ $json.lat !== null ? $json.lat : 'NULL' }},\n    lon = {{ $json.lon !== null ? $json.lon : 'NULL' }}\nWHERE id = {{ $json.ev_id }}\nRETURNING id AS ev_id, lat, lon;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        -112
+      ],
+      "id": "16481b69-2f77-4a43-bf00-1c7e92159770",
+      "name": "PG.UPDATE_EVENT_COORDS",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const upd = $input.first().json;\n\nconst baseEvent = $items('PG.SELECT_EVENT_S1')[0].json;\n\nreturn [{\n  json: {\n    event_id: upd.ev_id || baseEvent.id,\n    lat: upd.lat ?? baseEvent.lat,\n    lon: upd.lon ?? baseEvent.lon,\n    updated: !!upd.ev_id\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        -112
+      ],
+      "id": "8ca6db20-5cb0-4bf7-9440-dd5719da883e",
+      "name": "WRAP_RESULT"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        0
+      ],
+      "id": "9eec5131-5d3f-4aea-a067-59ebe6434d51",
+      "name": "When clicking ‘Execute workflow’",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Статические значения\nconst event_id = 73\n\n// В n8n нужно вернуть массив items\nreturn [\n  {\n    json: {\n      event_id\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        0
+      ],
+      "id": "b3a169a9-9f8d-4148-b57d-9857e9f46f02",
+      "name": "Code in JavaScript",
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "PG.SELECT_EVENT_S1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.SELECT_EVENT_S1": {
+      "main": [
+        [
+          {
+            "node": "IF.HAS_COORDS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.HAS_COORDS": {
+      "main": [
+        [
+          {
+            "node": "LLM.LOCATION_QUERY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM.LOCATION_QUERY": {
+      "main": [
+        [
+          {
+            "node": "CODE.PARSE_LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE.PARSE_LLM": {
+      "main": [
+        [
+          {
+            "node": "IF.GOT_COORDS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF.GOT_COORDS": {
+      "main": [
+        [
+          {
+            "node": "PG.UPDATE_EVENT_COORDS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.UPDATE_EVENT_COORDS": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "PG.SELECT_EVENT_S1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ca8e3781-c054-4a25-84b6-7b9069a86104",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "ZD56ylpapyyXSVY9",
+  "tags": [
+    {
+      "updatedAt": "2025-11-23T13:11:38.285Z",
+      "createdAt": "2025-11-23T13:11:38.285Z",
+      "id": "MjkrKVUMVRrVnT5U",
+      "name": "nafta2"
+    }
+  ]
+}

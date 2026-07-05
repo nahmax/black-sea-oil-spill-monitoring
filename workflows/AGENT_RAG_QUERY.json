@@ -1,0 +1,164 @@
+{
+  "name": "AGENT_RAG_QUERY",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "question"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -368,
+        0
+      ],
+      "id": "13a34226-c280-49bd-b0f5-abed48bcf5db",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nreturn [{ json: { events: rows } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "b34af6f2-0118-4409-a0bf-5c9ceb918eea",
+      "name": "WRAP_RESULTS"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": \"{{ $json.question }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -112,
+        0
+      ],
+      "id": "2e4a1df2-5361-4de2-aa0c-d1e5e1842538",
+      "name": "OpenAI Embeddings",
+      "credentials": {
+        "openAiApi": {
+          "id": "PfeWoQmbI2fRBGH2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const emb = $json.data[0].embedding;\nreturn [{\n  json: {\n    emb_str: '[' + emb.join(',') + ']'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        0
+      ],
+      "id": "dcf35f3a-69c6-4127-873e-eac7af305c6b",
+      "name": "Code.FORMAT_Q_EMB"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id,\n  src_title,\n  src_url,\n  event_date,\n  src_published_at,\n  short_summary,\n  lat,\n  lon,\n  verdict,\n  confidence,\n  1 - (title_emb <=> $1::vector) AS similarity\nFROM public.events\nWHERE is_oil_black_sea = true\n  AND title_emb IS NOT NULL\nORDER BY title_emb <=> $1::vector\nLIMIT 10",
+        "options": {
+          "queryReplacement": "=$1 = {{ $json.emb_str }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        384,
+        0
+      ],
+      "id": "4580cbb7-d49f-4fb3-bcfd-71f9048fa9cf",
+      "name": "PG.VECTOR_SEARCH",
+      "credentials": {
+        "postgres": {
+          "id": "6wOPCgtTsfgkpNTy",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Code.FORMAT_Q_EMB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code.FORMAT_Q_EMB": {
+      "main": [
+        [
+          {
+            "node": "PG.VECTOR_SEARCH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG.VECTOR_SEARCH": {
+      "main": [
+        [
+          {
+            "node": "WRAP_RESULTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "36c617b0-e209-4f5b-a422-887fb8fccdbb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f16281bfb01ef175267d07865ea566d7dba2c786330416daeef5c054c476eb16"
+  },
+  "id": "udF7RdAqHOGRjSrv",
+  "tags": [
+    {
+      "updatedAt": "2025-11-23T13:11:38.285Z",
+      "createdAt": "2025-11-23T13:11:38.285Z",
+      "id": "MjkrKVUMVRrVnT5U",
+      "name": "nafta2"
+    }
+  ]
+}
